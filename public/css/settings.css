@@ -1,0 +1,311 @@
+:root {
+  color-scheme: dark;
+  font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+}
+
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background: linear-gradient(120deg, #1f2a44 0%, #0d111a 100%);
+  color: #f5f7ff;
+}
+
+.settings-container {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2.5rem 1rem 2.5rem 1rem;
+}
+
+.settings-card {
+  background: rgba(19, 26, 42, 0.97);
+  border: 1.5px solid rgba(109, 131, 179, 0.38);
+  border-radius: 22px;
+  padding: 2.8rem 2.5rem 2.5rem 2.5rem;
+  box-shadow: 0 12px 40px 0 rgba(10,20,40,0.22), 0 1.5px 0 #2f7dff inset;
+  text-align: center;
+  max-width: 640px;
+  width: 100%;
+  margin: 0 auto;
+  transition: box-shadow 0.18s;
+}
+
+.settings-card h1 {
+  font-size: 2.2rem;
+  margin-bottom: 1.7rem;
+  color: #7fd6a7;
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  justify-content: center;
+  font-weight: 800;
+  letter-spacing: 0.5px;
+  text-shadow: 0 2px 12px #1f2a4444;
+}
+
+.settings-form {
+  display: grid;
+  gap: 1.25rem;
+  margin-bottom: 1.2rem;
+}
+
+.form-group {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.45rem;
+  width: 100%;
+}
+
+label {
+  font-size: 1.08rem;
+  color: #e6f2ff;
+  font-weight: 700;
+  margin-bottom: 0.1rem;
+  letter-spacing: 0.01em;
+}
+
+input {
+  width: 100%;
+  box-sizing: border-box;
+  min-height: 52px;
+  background: rgba(20, 34, 60, 0.98);
+  color: var(--text, #f5f7ff);
+  border: 1.5px solid rgba(120, 160, 230, 0.7);
+  border-radius: 14px;
+  padding: 0.95rem 1rem;
+  font-size: 1.09rem;
+  outline: none;
+  transition: border 0.18s, box-shadow 0.18s;
+  font-weight: 500;
+}
+@media (max-width: 600px) {
+  .settings-card {
+    padding: 1.2rem 0.5rem 1.2rem 0.5rem;
+    max-width: 98vw;
+    box-sizing: border-box;
+  }
+  .settings-container {
+    padding: 1.2rem 0.2rem 1.2rem 0.2rem;
+  }
+  .settings-card h1 {
+    font-size: 1.3rem;
+    gap: 0.4rem;
+  }
+  input {
+    min-height: 44px;
+    font-size: 1rem;
+    padding: 0.7rem 0.7rem;
+    box-sizing: border-box;
+  }
+  .btn.primary {
+    font-size: 1rem;
+    padding: 0.7rem 1rem;
+  }
+}
+
+input:focus {
+  border-color: #2f7dff;
+  box-shadow: 0 0 0 2.5px rgba(47, 125, 255, 0.13);
+}
+
+.btn.primary {
+  background: linear-gradient(90deg, #2f7dff 60%, #41b0ff 100%);
+  color: #fff;
+  border: none;
+  border-radius: 14px;
+  font-weight: 800;
+  font-size: 1.13rem;
+  padding: 1rem 1.5rem;
+  cursor: pointer;
+  box-shadow: 0 2px 12px 0 rgba(47,125,255,0.13);
+  margin-top: 0.5rem;
+  letter-spacing: 0.01em;
+  transition: background 0.18s, box-shadow 0.18s;
+}
+
+.btn.primary:hover {
+  background: linear-gradient(90deg, #1e5ed6 60%, #2f7dff 100%);
+  box-shadow: 0 4px 18px 0 rgba(47,125,255,0.18);
+}
+
+.settings-feedback {
+  min-height: 1.2rem;
+  color: #bfe6ff;
+  font-size: 1.05rem;
+  margin-top: 0.7rem;
+}
+
+.settings-feedback.error {
+  color: #ff9ca2;
+}
+
+/* Settings Sections */
+.settings-section {
+  margin-bottom: 2rem;
+  text-align: left;
+}
+
+.settings-section h2 {
+  font-size: 1.5rem;
+  margin-bottom: 0.8rem;
+  color: #7fd6a7;
+  font-weight: 700;
+}
+
+.section-description {
+  color: #b8c9e8;
+  font-size: 0.95rem;
+  margin-bottom: 1.2rem;
+}
+
+hr {
+  border: none;
+  border-top: 1px solid rgba(109, 131, 179, 0.25);
+  margin: 2rem 0;
+}
+
+/* Form Controls */
+.form-control {
+  width: 100%;
+  box-sizing: border-box;
+  min-height: 52px;
+  background: rgba(20, 34, 60, 0.98);
+  color: #f5f7ff;
+  border: 1.5px solid rgba(120, 160, 230, 0.7);
+  border-radius: 14px;
+  padding: 0.95rem 1rem;
+  font-size: 1.09rem;
+  outline: none;
+  transition: border 0.18s, box-shadow 0.18s;
+  font-weight: 500;
+}
+
+.form-control:focus {
+  border-color: #2f7dff;
+  box-shadow: 0 0 0 2.5px rgba(47, 125, 255, 0.13);
+}
+
+/* Button Styles */
+.btn {
+  cursor: pointer;
+  border-radius: 14px;
+  font-weight: 700;
+  padding: 1rem 1.5rem;
+  font-size: 1.13rem;
+  transition: all 0.18s;
+  border: none;
+  display: inline-block;
+  text-align: center;
+  text-decoration: none;
+}
+
+.btn-block {
+  width: 100%;
+  display: block;
+}
+
+.btn-primary {
+  background: linear-gradient(90deg, #2f7dff 60%, #41b0ff 100%);
+  color: #fff;
+  box-shadow: 0 2px 12px 0 rgba(47,125,255,0.13);
+}
+
+.btn-primary:hover {
+  background: linear-gradient(90deg, #1e5ed6 60%, #2f7dff 100%);
+  box-shadow: 0 4px 18px 0 rgba(47,125,255,0.18);
+}
+
+.btn-outline-danger {
+  background: transparent;
+  color: #ff6b6b;
+  border: 2px solid #ff6b6b;
+}
+
+.btn-outline-danger:hover {
+  background: rgba(255, 107, 107, 0.1);
+}
+
+.btn-outline-secondary {
+  background: transparent;
+  color: #9ab4d8;
+  border: 2px solid rgba(109, 131, 179, 0.5);
+}
+
+.btn-outline-secondary:hover {
+  background: rgba(109, 131, 179, 0.1);
+  border-color: #9ab4d8;
+}
+
+/* Override wallet.css for settings context */
+.settings-card .faucetpay-card,
+.settings-section .faucetpay-status {
+  padding: 0 !important;
+  border: none !important;
+  box-shadow: none !important;
+  background: transparent !important;
+}
+
+.settings-section .status-indicator {
+  margin-bottom: 1rem;
+}
+
+.settings-section .faucetpay-form,
+.settings-section .withdrawal-form {
+  margin-top: 1rem;
+}
+
+/* Increase email display size */
+.settings-section .faucetpay-info {
+  padding: 1.8rem !important;
+  margin: 1.5rem 0 !important;
+}
+
+.settings-section .faucetpay-info p {
+  font-size: 1.15rem !important;
+  margin: 1rem 0 !important;
+}
+
+.settings-section .faucetpay-info p strong {
+  font-size: 1.05rem;
+  color: #9ab4d8;
+}
+
+.settings-section .faucetpay-info p span {
+  font-size: 1.2rem !important;
+  font-weight: 600;
+  color: #7fd6a7;
+}
+
+/* Reduce unlink button size */
+.settings-section .btn-outline-danger {
+  padding: 0.6rem 1rem !important;
+  font-size: 0.95rem !important;
+  font-weight: 600 !important;
+  margin-top: 0.5rem;
+}
+
+@media (max-width: 600px) {
+  .settings-card {
+    padding: 1.2rem 0.5rem 1.2rem 0.5rem;
+    max-width: 98vw;
+  }
+  .settings-container {
+    padding: 1.2rem 0.2rem 1.2rem 0.2rem;
+  }
+  .settings-card h1 {
+    font-size: 1.3rem;
+    gap: 0.4rem;
+  }
+  input {
+    min-height: 44px;
+    font-size: 1rem;
+    padding: 0.7rem 0.7rem;
+  }
+  .btn.primary {
+    font-size: 1rem;
+    padding: 0.7rem 1rem;
+  }
+}

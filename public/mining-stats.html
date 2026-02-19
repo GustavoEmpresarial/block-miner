@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="icon" href="/assets/favcon/favicon.ico" type="image/x-icon" />
+    <link rel="apple-touch-icon" href="/assets/favcon/apple-touch-icon.png" />
+    <title>Mining Stats | BlockMiner</title>
+    <link rel="stylesheet" href="/css/layout.css" />
+    <link rel="stylesheet" href="/css/game.css" />
+    <link rel="stylesheet" href="/css/mining-stats.css" />
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" />
+  </head>
+  <body>
+    <div id="layoutInclude"></div>
+
+    <main class="app">
+      <section class="card stats-hero">
+        <h1><i class="bi bi-graph-up"></i> Network Mining Stats</h1>
+        <p class="subtitle">Live global data updated as the network receives visits.</p>
+      </section>
+
+      <section class="grid stats-grid">
+        <article class="card stats-card">
+          <h3>Network Hashrate</h3>
+          <strong id="statNetworkHash">0 H/s</strong>
+          <p>Combined mining power across the network.</p>
+        </article>
+        <article class="card stats-card">
+          <h3>Game Boost Hashrate</h3>
+          <strong id="statGameHash">0 H/s</strong>
+          <p>Hashrate added by active game boosts.</p>
+        </article>
+        <article class="card stats-card">
+          <h3>Registered Users</h3>
+          <strong id="statUsers">0</strong>
+          <p>Active miners in the ecosystem.</p>
+        </article>
+        <article class="card stats-card">
+          <h3>Total Paid</h3>
+          <strong id="statPaid">0 POL</strong>
+          <p>Total rewards distributed so far.</p>
+        </article>
+        <article class="card stats-card">
+          <h3>Days Online</h3>
+          <strong id="statDays">0</strong>
+          <p>Continuous uptime since launch.</p>
+        </article>
+        <article class="card stats-card">
+          <h3>Your Estimated Block Reward</h3>
+          <strong id="statEstimatedReward">--</strong>
+          <p>Based on your current share of the network.</p>
+        </article>
+      </section>
+
+      <section class="card stats-refresh">
+        <div class="refresh-row">
+          <span>Auto refresh every 20s</span>
+          <button id="refreshStatsBtn" class="btn" type="button">
+            <i class="bi bi-arrow-clockwise"></i> Refresh now
+          </button>
+        </div>
+        <div id="statsStatus" class="status"></div>
+      </section>
+    </main>
+
+    <script src="/js/layout.js"></script>
+    <script src="/js/mining-stats.js"></script>
+  </body>
+</html>

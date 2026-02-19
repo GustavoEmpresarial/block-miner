@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <link rel="icon" href="/assets/favcon/favicon.ico" type="image/x-icon" />
+  <link rel="apple-touch-icon" href="/assets/favcon/apple-touch-icon.png" />
+  <title>PTP | Paid To Promote</title>
+  <link rel="stylesheet" href="/css/layout.css" />
+  <link rel="stylesheet" href="/css/ptp.css" />
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css">
+  <script src="/js/layout.js" defer></script>
+</head>
+<body>
+  <div id="layoutInclude"></div>
+  <main class="ptp-main">
+    <section class="ptp-hero">
+      <h1><i class="bi bi-megaphone"></i> Paid To Promote</h1>
+      <p class="hero-desc">Promote your link for <strong>$0.10 USDC</strong> and earn <strong>$0.10 USDC</strong> for every 1,000 impressions!</p>
+    </section>
+
+    <section class="ptp-section">
+      <div class="ptp-section-head">
+        <h2><i class="bi bi-share"></i> Promote</h2>
+        <p>Copy your unique link and share to earn per 1,000 impressions (CPM).</p>
+      </div>
+      <div class="ptp-grid">
+        <section class="ptp-card promote-card">
+          <h3>Your Promo Link</h3>
+          <div class="ptp-link-box">
+            <input id="ptpLink" type="text" readonly placeholder="Loading..." />
+            <button id="copyPtpLink" class="btn-copy" title="Copy"><i class="bi bi-clipboard"></i></button>
+          </div>
+          <small>Earn $0.10 USDC per 1,000 impressions</small>
+          <div id="ptpLinkFeedback" class="ptp-feedback" role="status" aria-live="polite"></div>
+          <div id="earningsDisplay" class="earnings-display"></div>
+        </section>
+      </div>
+    </section>
+
+    <section class="ptp-section">
+      <div class="ptp-section-head">
+        <h2><i class="bi bi-megaphone"></i> Advertise</h2>
+        <p>Create your ad and track its performance.</p>
+      </div>
+      <div class="ptp-grid">
+        <section class="ptp-card ads-card">
+          <h3>Create Ad</h3>
+          <p>Publish your ad for just $0.10 USDC</p>
+          <form id="createAdForm" class="ptp-form" autocomplete="off">
+            <label class="ptp-field">
+              <span>Ad title</span>
+              <input id="adTitle" type="text" placeholder="e.g. My store" maxlength="120" required />
+            </label>
+            <label class="ptp-field">
+              <span>Ad URL</span>
+              <input id="adUrl" type="url" placeholder="https://" required />
+            </label>
+            <label class="ptp-field">
+              <span>Number of views</span>
+              <input id="adViews" type="number" min="0" step="1" placeholder="e.g. 5000" required />
+            </label>
+            <div class="ptp-field">
+              <span>Payment currency</span>
+              <div class="ptp-static">USDC</div>
+            </div>
+            <button type="submit" class="btn primary">
+              <i class="bi bi-plus-circle"></i> Create ad
+            </button>
+            <div id="createAdFeedback" class="ptp-feedback" role="status" aria-live="polite"></div>
+          </form>
+        </section>
+
+        <section class="ptp-card ads-card">
+          <h3>Manage Ads</h3>
+          <p>See your active ads and results.</p>
+          <div id="adsList" class="ads-list"></div>
+          <div id="manageAdsFeedback" class="ptp-feedback" role="status" aria-live="polite"></div>
+        </section>
+      </div>
+    </section>
+
+    <section class="ptp-card earnings-card">
+      <h2><i class="bi bi-coin"></i> Your Earnings</h2>
+      <div class="earnings-chart" id="earningsChart" aria-live="polite"></div>
+      <div class="earnings-chart-axis" id="earningsChartAxis"></div>
+      <div id="earningsFeedback" class="ptp-feedback" role="status" aria-live="polite"></div>
+    </section>
+  </main>
+
+  <script src="/js/ptp.js?v=2"></script>
+</body>
+</html>

@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <link rel="icon" href="/assets/favcon/favicon.ico" type="image/x-icon" />
+  <link rel="apple-touch-icon" href="/assets/favcon/apple-touch-icon.png" />
+  <title>Swap | BlockMiner</title>
+  <link rel="stylesheet" href="/css/layout.css" />
+  <link rel="stylesheet" href="/css/swap.css" />
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css">
+  <script src="/js/layout.js" defer></script>
+</head>
+<body>
+  <div id="layoutInclude"></div>
+  <main class="swap-main">
+    <section class="swap-card">
+      <h1><i class="bi bi-arrow-left-right"></i> Swap</h1>
+      <p>Swap POL and USDC at market rates.</p>
+
+      <div class="swap-balances">
+        <div class="balance-chip">POL: <strong id="polBalance">0.000000</strong></div>
+        <div class="balance-chip">USDC: <strong id="usdcBalance">0.000000</strong></div>
+      </div>
+
+      <form id="swapForm" class="swap-form">
+        <label class="swap-field">
+          <span>From</span>
+          <div class="swap-row">
+            <input id="swapAmount" type="number" min="0" step="0.000001" placeholder="0.00" required />
+            <select id="swapFrom">
+              <option value="POL" selected>POL</option>
+              <option value="USDC">USDC</option>
+            </select>
+          </div>
+        </label>
+
+        <label class="swap-field">
+          <span>To</span>
+          <div class="swap-row">
+            <input id="swapOutput" type="text" readonly value="0.000000" />
+            <select id="swapTo" disabled>
+              <option value="USDC" selected>USDC</option>
+              <option value="POL">POL</option>
+            </select>
+          </div>
+        </label>
+
+        <div class="swap-rate">Rate: <span id="swapRate">-</span> USDC per POL</div>
+        <button type="submit" class="swap-button">Swap</button>
+        <div id="swapFeedback" class="swap-feedback" role="status" aria-live="polite"></div>
+      </form>
+    </section>
+  </main>
+
+  <script src="/js/swap.js"></script>
+</body>
+</html>

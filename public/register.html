@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="icon" href="/assets/favcon/favicon.ico" type="image/x-icon" />
+    <link rel="apple-touch-icon" href="/assets/favcon/apple-touch-icon.png" />
+    <title>BlockMiner | Register</title>
+    <link rel="stylesheet" href="/css/register.css" />
+  </head>
+  <body>
+    <main class="auth-page">
+      <section class="card">
+        <h1>Create account</h1>
+        <p>Set up your profile and start mining with your wallet.</p>
+
+        <div id="referralBanner" class="referral-banner" hidden>
+          Referred by code <strong id="referralCodeLabel">--</strong>
+        </div>
+
+        <form id="registerForm" class="form">
+          <input id="refCode" name="refCode" type="hidden" />
+          <label for="username">Username</label>
+          <input id="username" name="username" type="text" placeholder="Choose a username" required minlength="3" />
+
+          <label for="email">Email</label>
+          <input id="email" name="email" type="email" placeholder="you@email.com" required />
+
+          <label for="password">Password</label>
+          <div class="password-field">
+            <input id="password" name="password" type="password" placeholder="Minimum 6 characters" required minlength="6" />
+            <button type="button" id="togglePassword" tabindex="-1" aria-label="Show password" class="eye-btn">
+              <i id="eyeIcon" class="bi bi-eye"></i>
+            </button>
+          </div>
+
+          <label for="confirmPassword">Confirm Password</label>
+          <div class="password-field">
+            <input id="confirmPassword" name="confirmPassword" type="password" placeholder="Repeat your password" required minlength="6" />
+            <button type="button" id="toggleConfirmPassword" tabindex="-1" aria-label="Show confirm password" class="eye-btn">
+              <i id="eyeIconConfirm" class="bi bi-eye"></i>
+            </button>
+          </div>
+
+          <button type="submit" class="btn primary">Register</button>
+        </form>
+
+        <p id="feedback" class="feedback"></p>
+
+        <nav class="links">
+          <a href="/login">I already have an account</a>
+          <a href="/">Back to home</a>
+        </nav>
+      </section>
+    </main>
+
+    <!-- Bootstrap Icons CDN -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css">
+    <script src="/js/register.js"></script>
+  </body>
+</html>

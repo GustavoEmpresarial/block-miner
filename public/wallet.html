@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <link rel="icon" href="/assets/favcon/favicon.ico" type="image/x-icon" />
+  <link rel="apple-touch-icon" href="/assets/favcon/apple-touch-icon.png" />
+  <title>Wallet | BlockMiner</title>
+  <link rel="stylesheet" href="/css/layout.css" />
+  <link rel="stylesheet" href="/css/game.css" />
+  <link rel="stylesheet" href="/css/wallet.css" />
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" />
+</head>
+<body>
+  <div id="layoutInclude"></div>
+
+  <main class="app">
+    <section class="card">
+      <h1>💰 Wallet</h1>
+      <p class="subtitle">Manage your wallet, connect external wallets, and withdraw your mined POL.</p>
+    </section>
+
+    <!-- Balance Card -->
+    <section class="card balance-card">
+      <div class="balance-header">
+        <h2>🪙 Current Balance</h2>
+        <button id="refreshBalanceBtn" class="btn btn-secondary" title="Refresh Balance">
+          <i class="bi bi-arrow-clockwise"></i>
+        </button>
+      </div>
+      <div class="balance-display">
+        <span id="balanceAmount" class="balance-amount">0.000000</span>
+        <span class="balance-currency">POL</span>
+      </div>
+      <div class="balance-stats">
+        <div class="stat-item">
+          <span class="stat-label">Lifetime Mined</span>
+          <span id="lifetimeMined" class="stat-value">0.000000 POL</span>
+        </div>
+        <div class="stat-item">
+          <span class="stat-label">Total Withdrawn</span>
+          <span id="totalWithdrawn" class="stat-value">0.000000 POL</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- Connect Wallet Card (for deposits only) -->
+    <section class="card wallet-connection-card">
+      <h2>🔗 Deposit Wallet Connection</h2>
+      <p>Connect your MetaMask, TrustWallet or other Web3 wallet to receive deposits and earn rewards.</p>
+      
+      <div id="walletNotConnected" class="wallet-status">
+        <div class="status-indicator disconnected">
+          <i class="bi bi-x-circle"></i>
+          <span>No Wallet Connected</span>
+        </div>
+        <button id="connectWalletBtn" class="btn btn-primary">
+          <i class="bi bi-wallet2"></i> Connect Wallet
+        </button>
+      </div>
+
+      <div id="walletConnected" class="wallet-status" style="display: none;">
+        <div class="status-indicator connected">
+          <i class="bi bi-check-circle"></i>
+          <span>Wallet Connected</span>
+        </div>
+        <div class="wallet-address">
+          <span class="address-label">Address:</span>
+          <span id="connectedAddress" class="address-value">0x...</span>
+          <button id="copyAddressBtn" class="btn btn-icon" title="Copy Address">
+            <i class="bi bi-clipboard"></i>
+          </button>
+        </div>
+        <button id="disconnectWalletBtn" class="btn btn-secondary">
+          <i class="bi bi-x-lg"></i> Disconnect
+        </button>
+      </div>
+    </section>
+
+    <!-- Deposit Section -->
+    <section class="card deposit-card">
+      <h2>💰 Deposit POL to Your Account</h2>
+      <p>Enter the amount, confirm in your wallet and the balance will be credited after confirmation.</p>
+      
+      <div class="deposit-methods">
+        <!-- Deposit via connected wallet -->
+        <div class="deposit-method" id="quickDepositSection" style="display: none;">
+          <h3>⚡ Deposit via Connected Wallet</h3>
+          <p>The site will call your wallet to sign and confirm the transaction.</p>
+          <span id="depositAddress" style="display: none;">Loading...</span>
+          
+          <form id="quickDepositForm" class="deposit-form">
+            <div class="form-group">
+              <label for="depositAmount">Amount to Deposit (POL)</label>
+              <input
+                type="text"
+                id="depositAmount"
+                class="form-control"
+                placeholder="0.000000"
+                inputmode="decimal"
+                autocomplete="off"
+                required
+              />
+              <small class="form-hint">Minimum: 0.01 POL</small>
+            </div>
+
+            <div class="deposit-summary">
+              <div class="summary-row">
+                <span class="summary-label">Amount:</span>
+                <span id="depositSummaryAmount" class="summary-value">0.000000 POL</span>
+              </div>
+              <div class="summary-row">
+                <span class="summary-label">Network Fee:</span>
+                <span id="depositSummaryFee" class="summary-value">~0.001 POL</span>
+              </div>
+              <div class="summary-row total">
+                <span class="summary-label">Total from wallet:</span>
+                <span id="depositSummaryTotal" class="summary-value">~0.001000 POL</span>
+              </div>
+            </div>
+
+            <button type="submit" id="quickDepositBtn" class="btn btn-success btn-block">
+              <i class="bi bi-arrow-up-circle"></i> Deposit
+            </button>
+          </form>
+        </div>
+      </div>
+
+      <!-- Pending Deposits -->
+      <div class="pending-deposits" id="pendingDepositsSection" style="display: none;">
+        <h3>⏳ Pending Deposits</h3>
+        <div id="pendingDepositsList" class="pending-list">
+          <!-- Populated by JS -->
+        </div>
+      </div>
+    </section>
+
+    <!-- FaucetPay Withdrawal Notice -->
+    <section class="card faucetpay-card">
+      <h2>💳 FaucetPay - Fast & Easy Withdrawals</h2>
+      <p>Withdraw your earnings instantly via FaucetPay without paying network fees</p>
+      
+      <div id="faucetpayNotLinked" class="faucetpay-status">
+        <div class="status-indicator disconnected">
+          <i class="bi bi-link-45deg"></i>
+          <span>Not Connected to FaucetPay</span>
+        </div>
+        <p class="status-hint">⚙️ Go to Settings to connect your FaucetPay account and enable withdrawals</p>
+        
+        <a href="/settings" class="btn btn-primary btn-block">
+          <i class="bi bi-gear"></i> Go to Settings
+        </a>
+      </div>
+
+      <div id="faucetpayLinked" class="faucetpay-status" style="display: none;">
+        <div class="status-indicator connected">
+          <i class="bi bi-check-circle"></i>
+          <span>Connected to FaucetPay</span>
+        </div>
+        <div class="faucetpay-info">
+          <p><strong>Email:</strong> <span id="faucetpayLinkedEmail">loading...</span></p>
+        </div>
+
+        <form id="faucetpayWithdrawForm" class="withdrawal-form">
+          <div class="form-group">
+            <label for="faucetpayAmount">Amount to Withdraw</label>
+            <input
+              type="text"
+              id="faucetpayAmount"
+              class="form-control"
+              placeholder="0.000000"
+              inputmode="decimal"
+              autocomplete="off"
+              required
+            />
+            <small class="form-hint">No network fees - transferred instantly to your FaucetPay account</small>
+          </div>
+
+          <div class="faucetpay-summary">
+            <div class="summary-row">
+              <span class="summary-label">Amount:</span>
+              <span id="faucetpaySummaryAmount" class="summary-value">0.000000</span>
+            </div>
+            <div class="summary-row">
+              <span class="summary-label">Network Fee:</span>
+              <span class="summary-value" style="color: #4ade80;">FREE</span>
+            </div>
+            <div class="summary-row total">
+              <span class="summary-label">You will receive:</span>
+              <span id="faucetpaySummaryTotal" class="summary-value">0.000000</span>
+            </div>
+          </div>
+
+          <button type="submit" id="faucetpayWithdrawBtn" class="btn btn-success btn-block">
+            <i class="bi bi-arrow-down-circle"></i> Withdraw via FaucetPay
+          </button>
+        </form>
+
+        <a href="/settings" class="btn btn-outline-secondary faucetpay-manage-link">
+          <i class="bi bi-gear"></i> Manage FaucetPay Connection
+        </a>
+      </div>
+    </section>
+
+    <!-- Transaction History Card -->
+    <section class="card history-card">
+      <div class="history-header">
+        <h2>📜 Transaction History</h2>
+        <button id="refreshHistoryBtn" class="btn btn-secondary">
+          <i class="bi bi-arrow-clockwise"></i> Refresh
+        </button>
+      </div>
+      
+      <div id="transactionList" class="transaction-list">
+        <div class="history-empty">
+          <i class="bi bi-inbox"></i>
+          <p>No transactions yet</p>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <script src="/js/layout.js"></script>
+  <script src="/js/wallet.js"></script>
+  <script src="/js/faucetpay.js"></script>
+</body>
+</html>

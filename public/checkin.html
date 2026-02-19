@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="icon" href="/assets/favcon/favicon.ico" type="image/x-icon" />
+    <link rel="apple-touch-icon" href="/assets/favcon/apple-touch-icon.png" />
+    <title>BlockMiner | Daily Check-in</title>
+    <link rel="stylesheet" href="/css/layout.css" />
+    <link rel="stylesheet" href="/css/checkin.css" />
+  </head>
+  <body>
+    <div id="layoutInclude"></div>
+    <main class="app">
+      <section class="checkin-card">
+        <h1>Daily Check-in</h1>
+        <p class="subtitle">Pay 0.01 POL to activate today and extend game GH/s for 7 days.</p>
+
+        <div class="checkin-details">
+          <div class="detail-row">
+            <span class="label">Network:</span>
+            <span class="value">Polygon Mainnet</span>
+          </div>
+          <div class="detail-row">
+            <span class="label">Amount:</span>
+            <span class="value">0.01 POL</span>
+          </div>
+          <div class="detail-row">
+            <span class="label">Receiver:</span>
+            <span class="value mono">0x95EA8E99063A3EF1B95302aA1C5bE199653EEb13</span>
+          </div>
+          <div class="detail-row">
+            <span class="label">Rule:</span>
+            <span class="value">With check-in, today rewards last 7 days. Without, 24 hours.</span>
+          </div>
+        </div>
+
+        <div class="status" id="checkinStatus">Checking status...</div>
+
+        <button class="btn-checkin" id="checkinBtn">Pay 0.01 POL & Check-in</button>
+        <div class="hint">Requires a wallet like MetaMask connected to Polygon.</div>
+      </section>
+    </main>
+
+    <script src="/js/layout.js"></script>
+    <script src="/js/checkin.js"></script>
+  </body>
+</html>

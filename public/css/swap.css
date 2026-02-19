@@ -1,0 +1,149 @@
+:root {
+  color-scheme: dark;
+  font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: radial-gradient(circle at top, #1f2a44, #0d111a 55%);
+  color: #f5f7ff;
+  min-height: 100vh;
+}
+
+.swap-main {
+  display: grid;
+  place-items: center;
+  min-height: calc(100vh - 100px);
+  padding: 2rem 1rem;
+}
+
+.swap-card {
+  width: min(560px, 96%);
+  background: rgba(19, 26, 42, 0.95);
+  border: 1.5px solid rgba(109, 131, 179, 0.38);
+  border-radius: 18px;
+  padding: 2rem;
+  text-align: center;
+  box-shadow: 0 12px 28px rgba(10, 20, 40, 0.22);
+}
+
+.swap-card h1 {
+  font-size: 2rem;
+  margin: 0 0 1rem;
+  color: #deebff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.6rem;
+}
+
+.swap-card p {
+  margin: 0 0 2rem;
+  color: #aebee1;
+  line-height: 1.5;
+}
+
+.swap-balances {
+  display: flex;
+  justify-content: center;
+  gap: 0.75rem;
+  margin-bottom: 1.4rem;
+  flex-wrap: wrap;
+}
+
+.balance-chip {
+  background: rgba(15, 23, 40, 0.9);
+  border: 1px solid rgba(47, 125, 255, 0.45);
+  border-radius: 12px;
+  padding: 0.5rem 0.9rem;
+  font-size: 0.95rem;
+  color: #bfe6ff;
+}
+
+.swap-form {
+  display: grid;
+  gap: 1rem;
+}
+
+.swap-field {
+  display: grid;
+  gap: 0.4rem;
+  color: #b5bfda;
+  font-size: 0.95rem;
+  text-align: left;
+}
+
+.swap-row {
+  display: grid;
+  grid-template-columns: 1fr 120px;
+  gap: 0.6rem;
+}
+
+.swap-row input,
+.swap-row select {
+  background: rgba(15, 23, 40, 0.9);
+  color: #bfe6ff;
+  border: 1px solid rgba(47, 125, 255, 0.6);
+  border-radius: 10px;
+  padding: 0.7rem 0.9rem;
+  font-size: 0.98rem;
+}
+
+.swap-row select:disabled {
+  opacity: 0.7;
+}
+
+.swap-rate {
+  color: #9fb0c9;
+  font-size: 0.92rem;
+}
+
+.swap-button {
+  background: linear-gradient(90deg, #2f7dff 60%, #41b0ff 100%);
+  color: #fff;
+  border: none;
+  border-radius: 12px;
+  font-weight: 800;
+  font-size: 1.05rem;
+  padding: 0.8rem 1.2rem;
+  cursor: pointer;
+  box-shadow: 0 2px 12px 0 rgba(47,125,255,0.13);
+  transition: background 0.18s, box-shadow 0.18s;
+}
+
+.swap-button:hover {
+  background: linear-gradient(90deg, #1e5ed6 60%, #2f7dff 100%);
+  box-shadow: 0 4px 18px 0 rgba(47,125,255,0.18);
+}
+
+.swap-feedback {
+  min-height: 1.1rem;
+  font-size: 0.95rem;
+  color: #aebee1;
+}
+
+.swap-feedback.is-success {
+  color: #4cc182;
+}
+
+.swap-feedback.is-error {
+  color: #ff8f8f;
+}
+
+@media (max-width: 520px) {
+  .swap-card {
+    padding: 1.4rem 1.2rem;
+  }
+
+  .swap-row {
+    grid-template-columns: 1fr;
+  }
+
+  .swap-row select {
+    width: 100%;
+  }
+}

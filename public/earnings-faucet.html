@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="icon" href="/assets/favcon/favicon.ico" type="image/x-icon" />
+    <link rel="apple-touch-icon" href="/assets/favcon/apple-touch-icon.png" />
+    <title>Earnings | Faucet</title>
+    <link rel="stylesheet" href="/css/layout.css" />
+    <link rel="stylesheet" href="/css/game.css" />
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" />
+  </head>
+  <body>
+    <div id="layoutInclude"></div>
+
+    <main class="app">
+      <section class="card">
+        <h1>Earnings | Faucet</h1>
+        <p class="subtitle">Claim a 1 GH/s miner every hour to keep your rig growing.</p>
+      </section>
+
+      <section class="card">
+        <h2>Hourly Faucet</h2>
+        <p>Click to claim your reward. Cooldown: 1 hour.</p>
+        <div class="faucet-reward">
+          <img id="faucetRewardImage" class="faucet-reward-image" src="" alt="Faucet reward" />
+          <div>
+            <div class="faucet-reward-title" id="faucetRewardName">Loading reward...</div>
+            <div class="faucet-reward-meta" id="faucetRewardMeta"></div>
+          </div>
+        </div>
+        <div class="faucet-actions">
+          <button id="faucetClaimBtn" class="btn success" type="button">
+            <i class="bi bi-droplet"></i> Claim 1 GH/s Miner
+          </button>
+          <div class="faucet-status">
+            <div id="faucetStatusText">Checking availability...</div>
+            <div id="faucetCooldownText" class="faucet-cooldown"></div>
+          </div>
+        </div>
+        <div id="faucetHint" class="faucet-hint"></div>
+      </section>
+    </main>
+
+    <script src="/js/layout.js"></script>
+    <script src="/js/faucet.js"></script>
+  </body>
+</html>

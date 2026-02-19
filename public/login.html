@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="icon" href="/assets/favcon/favicon.ico" type="image/x-icon" />
+    <link rel="apple-touch-icon" href="/assets/favcon/apple-touch-icon.png" />
+    <title>BlockMiner | Sign In</title>
+    <link rel="stylesheet" href="/css/login.css" />
+  </head>
+  <body>
+    <main class="auth-page">
+      <section class="card">
+        <h1>Welcome back</h1>
+        <p>Sign in to continue building your mining empire.</p>
+
+        <form id="loginForm" class="form">
+          <label for="email">Email</label>
+          <input id="email" name="email" type="email" placeholder="you@email.com" required />
+
+          <label for="password">Password</label>
+          <input id="password" name="password" type="password" placeholder="Your password" required />
+
+          <button type="submit" class="btn primary">Sign In</button>
+        </form>
+
+        <p id="feedback" class="feedback"></p>
+
+        <nav class="links">
+          <a href="/register">Create account</a>
+          <a href="/">Back to home</a>
+        </nav>
+      </section>
+    </main>
+
+    <script src="/js/login.js"></script>
+  </body>
+</html>

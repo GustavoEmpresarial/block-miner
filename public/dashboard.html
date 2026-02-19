@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="icon" href="/assets/favcon/favicon.ico" type="image/x-icon" />
+    <link rel="apple-touch-icon" href="/assets/favcon/apple-touch-icon.png" />
+    <title>BlockMiner | Dashboard</title>
+    <link rel="stylesheet" href="/css/layout.css" />
+    <link rel="stylesheet" href="/css/game.css" />
+  </head>
+  <body>
+    <div id="layoutInclude"></div>
+    <main class="app">
+      <section class="grid stats-grid">
+        <article class="card">
+          <h3>Global Network Power</h3>
+          <strong id="netHashrate">0 H/s</strong>
+        </article>
+        <article class="card">
+          <h3>Block Reward</h3>
+          <strong id="coinPower">$0.0000</strong>
+        </article>
+        <article class="card">
+          <h3>Your Power</h3>
+          <strong id="myHashrate">0 H/s</strong>
+        </article>
+        <article class="card">
+          <h3>Next Block (10 min)</h3>
+          <strong id="blockCountdown">10:00</strong>
+        </article>
+      </section>
+
+      <section class="room-section">
+        <article class="card room-card">
+          <div class="room-header">
+            <h2>Mining Room</h2>
+            <span id="rackCounter" class="room-info">0/10 racks</span>
+          </div>
+          <div id="miningRoom" class="mining-room-square"></div>
+        </article>
+      </section>
+
+      <section class="inventory-section">
+        <article class="card inventory-card">
+          <div class="inventory-header">
+            <h2>Inventory</h2>
+            <span id="inventoryCount" class="inventory-count">0</span>
+          </div>
+          <div class="inventory-hint">
+            Each rack has 8 slots (1-8). Click an empty slot to install a miner.
+          </div>
+          <div id="inventoryList" class="inventory-list"></div>
+        </article>
+      </section>
+
+      <div id="machineModal" class="modal">
+        <div class="modal-content">
+          <span class="modal-close">&times;</span>
+          <h3 id="modalTitle">Machine Details</h3>
+          <div id="modalBody"></div>
+          <div class="modal-actions" id="modalActions"></div>
+        </div>
+      </div>
+    </main>
+
+    <script src="/js/layout.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/ethers@6.13.5/dist/ethers.umd.min.js"></script>
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="/js/game.js"></script>
+  </body>
+</html>

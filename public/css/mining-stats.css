@@ -1,0 +1,42 @@
+.stats-hero h1 {
+  margin: 0 0 1rem 0;
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  font-size: 1.6rem;
+}
+
+.stats-hero .subtitle {
+  margin-top: 0;
+  margin-bottom: 1.5rem;
+  color: #9ab4d8;
+  line-height: 1.5;
+}
+
+.stats-card p {
+  margin-top: 0.75rem;
+  color: #9fb2db;
+  font-size: 0.92rem;
+  line-height: 1.5;
+}
+
+.stats-refresh {
+  display: grid;
+  gap: 0.6rem;
+}
+
+.refresh-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.8rem;
+  color: #b5bfda;
+  font-weight: 600;
+}
+
+@media (max-width: 680px) {
+  .refresh-row {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}

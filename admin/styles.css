@@ -1,0 +1,161 @@
+:root {
+  color-scheme: dark;
+  font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+  background: #0b0f1a;
+  color: #eef2ff;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background: radial-gradient(circle at top, #1d2842, #0b0f1a 55%);
+}
+
+.admin-app {
+  width: min(1200px, 100%);
+  margin: 0 auto;
+  padding: 2rem 1.5rem 3rem;
+  display: grid;
+  gap: 1.5rem;
+}
+
+.admin-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.admin-header h1 {
+  margin: 0 0 0.4rem;
+  font-size: 2rem;
+}
+
+.admin-header p {
+  margin: 0;
+  color: #a8b3d9;
+}
+
+.card {
+  background: rgba(17, 24, 41, 0.9);
+  border: 1px solid rgba(109, 131, 179, 0.35);
+  border-radius: 14px;
+  padding: 1.2rem 1.4rem;
+}
+
+h2 {
+  margin: 0 0 1rem;
+  font-size: 1.35rem;
+}
+
+.form-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 0.9rem;
+  align-items: end;
+}
+
+label {
+  display: grid;
+  gap: 0.45rem;
+  font-size: 0.9rem;
+  color: #ccd6f6;
+}
+
+input,
+select {
+  background: #0f1628;
+  border: 1px solid rgba(109, 131, 179, 0.45);
+  border-radius: 8px;
+  padding: 0.5rem 0.6rem;
+  color: #eef2ff;
+}
+
+.checkbox {
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.btn {
+  background: #1c2a48;
+  border: 1px solid #3f5aa1;
+  color: #eef2ff;
+  padding: 0.55rem 1rem;
+  border-radius: 8px;
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.btn.primary {
+  background: linear-gradient(120deg, #2f7dff, #41b0ff);
+  border-color: #5fa0ff;
+}
+
+.btn.small {
+  padding: 0.35rem 0.6rem;
+  font-size: 0.85rem;
+}
+
+.table-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 0.8rem;
+}
+
+.table-wrapper {
+  overflow-x: auto;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 800px;
+}
+
+thead th {
+  text-align: left;
+  font-size: 0.85rem;
+  color: #b7c3e8;
+  border-bottom: 1px solid rgba(109, 131, 179, 0.4);
+  padding: 0.6rem 0.4rem;
+}
+
+tbody td {
+  padding: 0.45rem 0.4rem;
+  border-bottom: 1px solid rgba(109, 131, 179, 0.2);
+}
+
+.status {
+  font-size: 0.85rem;
+  color: #9fb2db;
+}
+
+.status.success {
+  color: #52d48c;
+}
+
+.status.error {
+  color: #ff7b7b;
+}
+
+.status.info {
+  color: #6bb7ff;
+}
+
+@media (max-width: 700px) {
+  .admin-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .form-grid {
+    grid-template-columns: 1fr;
+  }
+}

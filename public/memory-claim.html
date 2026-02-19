@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="icon" href="/assets/favcon/favicon.ico" type="image/x-icon" />
+    <link rel="apple-touch-icon" href="/assets/favcon/apple-touch-icon.png" />
+    <title>BlockMiner | Memory Reward</title>
+    <link rel="stylesheet" href="/css/layout.css" />
+    <link rel="stylesheet" href="/css/memory-claim.css" />
+  </head>
+  <body>
+    <div id="layoutInclude"></div>
+    <main class="app">
+      <section class="claim-card">
+        <h1>Reward Confirmation</h1>
+        <p class="subtitle">Confirm to collect your Memory Game reward.</p>
+
+        <div class="summary">
+          <div class="summary-row">
+            <span class="label">Reward</span>
+            <strong id="rewardValue">5 GH/s</strong>
+          </div>
+          <div class="summary-row">
+            <span class="label">Moves</span>
+            <strong id="rewardMoves">--</strong>
+          </div>
+          <div class="summary-row">
+            <span class="label">Time</span>
+            <strong id="rewardTime">--:--</strong>
+          </div>
+        </div>
+
+        <div id="claimStatus" class="status">Ready to claim.</div>
+        <button id="claimBtn" class="btn-claim" type="button">Collect Reward</button>
+        <p class="hint">If you checked in today, your GH/s lasts 7 days.</p>
+      </section>
+    </main>
+
+    <script src="/js/layout.js"></script>
+    <script src="/js/memory-claim.js"></script>
+  </body>
+</html>

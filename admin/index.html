@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>BlockMiner | Admin</title>
+    <link rel="stylesheet" href="/admin/styles.css" />
+  </head>
+  <body>
+    <main class="admin-app">
+      <header class="admin-header">
+        <div>
+          <h1>Miner Admin</h1>
+          <p>Create, edit, and manage miners.</p>
+        </div>
+        <button class="btn" id="refreshButton" type="button">Refresh</button>
+      </header>
+
+      <section class="card">
+        <h2>Create Miner</h2>
+        <form id="createForm" class="form-grid">
+          <label>
+            Name
+            <input name="name" type="text" required />
+          </label>
+          <label>
+            Slug
+            <input name="slug" type="text" required />
+          </label>
+          <label>
+            Power (GHS)
+            <input name="baseHashRate" type="number" step="0.01" min="0" required />
+          </label>
+          <label>
+            Price (POL)
+            <input name="price" type="number" step="0.0001" min="0" required />
+          </label>
+          <label>
+            Slot Size
+            <select name="slotSize" required>
+              <option value="1">1 Slot</option>
+              <option value="2">2 Slots</option>
+            </select>
+          </label>
+          <label>
+            Image URL
+            <input name="imageUrl" type="text" placeholder="/assets/machines/123.png" />
+          </label>
+          <label class="checkbox">
+            <input name="isActive" type="checkbox" checked />
+            Active
+          </label>
+          <button class="btn primary" type="submit">Create Miner</button>
+        </form>
+      </section>
+
+      <section class="card">
+        <div class="table-header">
+          <h2>All Miners</h2>
+          <span id="statusMessage" class="status"></span>
+        </div>
+        <div class="table-wrapper">
+          <table>
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>Name</th>
+                <th>Slug</th>
+                <th>GHS</th>
+                <th>Price</th>
+                <th>Slot</th>
+                <th>Image URL</th>
+                <th>Active</th>
+                <th>Save</th>
+              </tr>
+            </thead>
+            <tbody id="minersTable"></tbody>
+          </table>
+        </div>
+      </section>
+    </main>
+
+    <script src="/admin/admin.js"></script>
+  </body>
+</html>

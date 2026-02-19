@@ -1,0 +1,42 @@
+<header class="global-navbar">
+  <div class="nav-left">
+    <a class="nav-brand" href="/">
+      <span class="nav-logo">⛏️</span>
+      <span>BlockMiner</span>
+    </a>
+  </div>
+
+  <div class="nav-auth">
+    <button id="navMenuBtn" class="nav-link nav-menu-btn" type="button" aria-label="Open menu">
+      <i class="bi bi-list"></i>
+    </button>
+    <button id="navLogoutBtn" class="nav-link" type="button">Logout</button>
+  </div>
+</header>
+
+<aside id="globalSidebar" class="global-sidebar">
+  <nav class="side-links">
+    <a href="/dashboard"><i class="bi bi-controller"></i>Dashboard</a>
+    <a href="/mining-stats"><i class="bi bi-graph-up"></i>Mining Stats</a>
+    <a href="/games"><i class="bi bi-joystick"></i>Games</a>
+    <a href="/checkin"><i class="bi bi-calendar-check"></i>Daily Check-in</a>
+    <a href="/season-pass-coming-soon"><i class="bi bi-ticket-perforated"></i>Season Pass</a>
+    <a href="/shop"><i class="bi bi-bag"></i>Shop</a>
+    <div class="side-section" data-section="earnings">
+      <button class="side-section-toggle" type="button" data-section-toggle="earnings" aria-expanded="false">
+        <span class="side-section-title"><i class="bi bi-cash-coin"></i>Earnings</span>
+        <i class="bi bi-chevron-up section-chevron" aria-hidden="true"></i>
+      </button>
+      <div class="side-sub-links" data-section-panel="earnings">
+        <a href="/earnings/faucet"><i class="bi bi-droplet"></i>Faucet</a>
+        <a href="/earnings/ptc"><i class="bi bi-cursor"></i>PTC</a>
+      </div>
+    </div>
+    <a href="/ptp"><i class="bi bi-megaphone"></i>PTP</a>
+    <a href="/swap"><i class="bi bi-arrow-left-right"></i>Swap</a>
+    <a href="/wallet"><i class="bi bi-wallet2"></i>Wallet</a>
+    <a href="/referral"><i class="bi bi-people"></i>Referral</a>
+    <a href="/settings"><i class="bi bi-gear"></i>Settings</a>
+    <button id="navLogoutBtnSide" class="nav-link" type="button"><i class="bi bi-box-arrow-right"></i>Logout</button>
+  </nav>
+</aside>

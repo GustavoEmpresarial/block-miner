@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="icon" href="/assets/favcon/favicon.ico" type="image/x-icon" />
+    <link rel="apple-touch-icon" href="/assets/favcon/apple-touch-icon.png" />
+    <title>BlockMiner | Memory Game</title>
+    <link rel="stylesheet" href="/css/layout.css" />
+    <link rel="stylesheet" href="/css/memory-game.css" />
+  </head>
+  <body>
+    <div id="layoutInclude"></div>
+    <main class="app">
+      <section class="game-hero">
+        <div>
+          <h1>Memory Game</h1>
+          <p>Match all pairs as fast as you can.</p>
+        </div>
+        <div class="game-actions">
+          <button id="resetBtn" class="btn-secondary" type="button">Reset</button>
+        </div>
+      </section>
+
+      <section class="game-panel">
+        <div class="stats">
+          <div class="stat">
+            <span class="label">Moves</span>
+            <strong id="moves">0</strong>
+          </div>
+          <div class="stat">
+            <span class="label">Matches</span>
+            <strong id="matches">0</strong>
+          </div>
+          <div class="stat">
+            <span class="label">Time</span>
+            <strong id="timer">00:00</strong>
+          </div>
+        </div>
+        <div class="canvas-wrap">
+          <canvas id="memoryCanvas" width="720" height="480"></canvas>
+        </div>
+        <div id="gameMessage" class="message">Click two cards to start.</div>
+      </section>
+    </main>
+
+    <script src="/js/layout.js"></script>
+    <script src="/js/memory-game.js"></script>
+  </body>
+</html>

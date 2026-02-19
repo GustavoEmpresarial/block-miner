@@ -1,0 +1,108 @@
+:root {
+  color-scheme: dark;
+  font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: radial-gradient(circle at top, #1f2a44, #0d111a 55%);
+  color: #f5f7ff;
+  min-height: 100vh;
+}
+
+.app {
+  width: min(980px, 100%);
+  margin: 0 auto;
+  display: grid;
+  gap: 1.5rem;
+}
+
+.claim-card {
+  background: rgba(19, 26, 42, 0.85);
+  border: 1px solid rgba(109, 131, 179, 0.35);
+  border-radius: 16px;
+  padding: 2rem 2.2rem;
+  text-align: center;
+}
+
+.claim-card h1 {
+  margin: 0 0 0.6rem;
+  font-size: 2rem;
+}
+
+.subtitle {
+  margin: 0 0 1.4rem;
+  color: #9ab0d9;
+}
+
+.summary {
+  display: grid;
+  gap: 0.8rem;
+  background: rgba(26, 40, 73, 0.5);
+  border: 1px solid rgba(109, 131, 179, 0.25);
+  border-radius: 12px;
+  padding: 1.2rem 1.4rem;
+  margin-bottom: 1.2rem;
+}
+
+.summary-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  font-size: 1.05rem;
+}
+
+.label {
+  color: #b7c8ea;
+}
+
+.status {
+  min-height: 1.3rem;
+  color: #9ad6ff;
+  font-weight: 600;
+  margin-bottom: 1rem;
+}
+
+.status.error {
+  color: #ff7a7a;
+}
+
+.status.success {
+  color: #79f2a7;
+}
+
+.btn-claim {
+  background: linear-gradient(120deg, #2f7dff, #41b0ff);
+  color: #ffffff;
+  border: 1px solid #5fa0ff;
+  padding: 0.85rem 1.8rem;
+  border-radius: 10px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.btn-claim:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.hint {
+  margin-top: 0.8rem;
+  color: #9ab0d9;
+  font-size: 0.95rem;
+}
+
+@media (max-width: 700px) {
+  .claim-card {
+    padding: 1.6rem 1.2rem;
+  }
+
+  .summary-row {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}
