@@ -164,7 +164,13 @@ router.post("/withdraw", requireAuth, faucetpayWithdrawLimiter, validateBody(wit
 
     res.json({ ok: true, message: "Withdrawal successful" });
   } catch (error) {
-    res.status(503).json({ ok: false, message: "Payment service temporarily unavailable" });
+    logger.error("FaucetPay withdrawal failed", {
+      userId: req.user.id,
+      amount: amountRaw,
+      error: error.message,
+      stack: error.stack
+    });
+    res.status(503).json({ ok: false, message: "Payment service temporarily unavailable: " + error.message });
   }
 });
 

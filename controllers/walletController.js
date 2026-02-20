@@ -624,15 +624,23 @@ async function withdrawPOL(req, res) {
       });
 
     } catch (faucetError) {
-      logger.error(`FaucetPay service error for user ${userId}:`, faucetError.message);
+      logger.error(`FaucetPay service error for user ${userId}:`, {
+        message: faucetError.message,
+        amount: parsedAmount,
+        toAddress,
+        stack: faucetError.stack
+      });
       return res.status(503).json({
         ok: false,
-        message: "Payment service temporarily unavailable"
+        message: "Payment service temporarily unavailable: " + faucetError.message
       });
     }
 
   } catch (error) {
-    logger.error(`Error in withdrawPOL for user ${req.user?.id}:`, error.message);
+    logger.error(`Error in withdrawPOL for user ${req.user?.id}:`, {
+      message: error.message,
+      stack: error.stack
+    });
     res.status(500).json({
       ok: false,
       message: "Failed to process withdrawal"

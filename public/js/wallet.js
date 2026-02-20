@@ -84,7 +84,7 @@ async function connectWallet() {
   state.isConnecting = true;
   
   if (typeof window.ethereum === "undefined") {
-    window.notify?.("Carteira nao detectada. Instale a extensao da Trust Wallet ou MetaMask.", "error");
+    window.notify?.("Wallet not detected. Install Trust Wallet or MetaMask extension.", "error");
     state.isConnecting = false;
     return;
   }
@@ -98,14 +98,14 @@ async function connectWallet() {
       state.walletProvider = window.ethereum;
       await saveWalletAddress(address);
       updateWalletUI();
-      window.notify?.("Carteira conectada!", "success");
+      window.notify?.("Wallet connected!", "success");
     }
   } catch (error) {
     console.error("[Wallet] Error connecting wallet:", error);
     if (!error.code || error.code === 4001) {
-      window.notify?.("Conexao cancelada.", "info");
+      window.notify?.("Connection cancelled.", "info");
     } else {
-      window.notify?.("Erro ao conectar carteira.", "error");
+      window.notify?.("Error connecting wallet.", "error");
     }
   } finally {
     state.isConnecting = false;
@@ -237,14 +237,14 @@ async function handleQuickDeposit(event) {
   event.preventDefault();
 
   if (typeof window.ethereum === "undefined") {
-    window.notify?.("Carteira nao detectada. Instale a extensao da Trust Wallet ou MetaMask.", "error");
+    window.notify?.("Wallet not detected. Install Trust Wallet or MetaMask extension.", "error");
     return;
   }
 
   const { amount, normalized } = parseDepositAmount(elements.depositAmount.value);
   
   if (!amount || amount < 0.01) {
-    window.notify?.("Minimo 0.01 POL", "error");
+    window.notify?.("Minimum 0.01 POL", "error");
     return;
   }
 
@@ -259,7 +259,7 @@ async function handleQuickDeposit(event) {
 
     const data = await response.json();
     if (!data.ok || !data.depositAddress) {
-      window.notify?.("Erro ao obter endereco de deposito", "error");
+      window.notify?.("Error getting deposit address", "error");
       return;
     }
 
@@ -267,7 +267,7 @@ async function handleQuickDeposit(event) {
     
     // Disable button
     elements.quickDepositBtn.disabled = true;
-    elements.quickDepositBtn.innerHTML = '<i class="bi bi-hourglass-split"></i> Enviando...';
+    elements.quickDepositBtn.innerHTML = '<i class="bi bi-hourglass-split"></i> Sending...';
 
     // Convert amount to wei (18 decimals for POL)
     const amountWei = decimalToWeiHex(normalized);
@@ -283,7 +283,7 @@ async function handleQuickDeposit(event) {
       }]
     });
 
-    window.notify?.("Transacao enviada! Processando...", "info");
+    window.notify?.("Transaction sent! Processing...", "info");
 
     // Notify server about the deposit
     await fetch("/api/wallet/deposit", {
@@ -302,7 +302,7 @@ async function handleQuickDeposit(event) {
     elements.depositAmount.value = "";
     updateDepositSummary();
     
-    window.notify?.("Deposito enviado! Saldo sera atualizado apos confirmacao.", "success");
+    window.notify?.("Deposit sent! Balance will update after confirmation.", "success");
     
     // Refresh balance after a delay
     setTimeout(() => loadBalance(), 5000);
@@ -310,13 +310,13 @@ async function handleQuickDeposit(event) {
   } catch (error) {
     console.error("Error processing deposit:", error);
     if (error.code === 4001) {
-      window.notify?.("Transacao cancelada", "info");
+      window.notify?.("Transaction cancelled", "info");
     } else {
-      window.notify?.("Erro ao processar deposito", "error");
+      window.notify?.("Error processing deposit", "error");
     }
   } finally {
     elements.quickDepositBtn.disabled = false;
-    elements.quickDepositBtn.innerHTML = '<i class="bi bi-arrow-up-circle"></i> Depositar';
+    elements.quickDepositBtn.innerHTML = '<i class="bi bi-arrow-up-circle"></i> Deposit';
   }
 }
 
