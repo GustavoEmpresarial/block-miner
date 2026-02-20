@@ -1,6 +1,9 @@
 const { ethers } = require("ethers");
 const walletModel = require("../models/walletModel");
+const PayoutModel = require("../models/faucetpayModel");
 const { createAuditLog } = require("../models/auditLogModel");
+const FaucetPayService = require("../services/faucetpayService");
+const logger = require("../utils/logger").getLogger("WalletController");
 
 const POLYGON_RPC_URL = process.env.POLYGON_RPC_URL || "https://polygon-rpc.com";
 const DEFAULT_RPC_URLS = [
@@ -526,10 +529,115 @@ async function monitorDeposit(userId, txHash, depositAddress, depositId) {
   }
 }
 
+// Withdraw POL to wallet/email via FaucetPay
+async function withdrawPOL(req, res) {
+  try {
+    const userId = req.user.id;
+    const { amount, toAddress } = req.body;
+
+    // Validation
+    if (!amount || !toAddress) {
+      return res.status(400).json({
+        ok: false,
+        message: "Amount and wallet address are required"
+      });
+    }
+
+    const parsedAmount = normalizeAmountInput(amount);
+    
+    if (parsedAmount < 0.1) {
+      return res.status(400).json({
+        ok: false,
+        message: "Minimum withdrawal amount is 0.1 POL"
+      });
+    }
+
+    if (parsedAmount > 100) {
+      return res.status(400).json({
+        ok: false,
+        message: "Maximum withdrawal amount is 100 POL"
+      });
+    }
+
+    // Get user balance
+    const wallet = await walletModel.getUserBalance(userId);
+    if (!wallet || wallet.balance < parsedAmount) {
+      return res.status(400).json({
+        ok: false,
+        message: "Insufficient balance"
+      });
+    }
+
+    // Call FaucetPay service
+    logger.info(`User ${userId} attempting POL withdrawal: ${parsedAmount} to ${toAddress}`);
+    
+    try {
+      const payoutResponse = await FaucetPayService.send(
+        parsedAmount,
+        toAddress,
+        "POL",
+        req.ip
+      );
+
+      if (!payoutResponse.ok) {
+        logger.warn(`FaucetPay payout failed for user ${userId}: ${payoutResponse.error}`);
+        return res.status(400).json({
+          ok: false,
+          message: payoutResponse.error || "Withdrawal failed"
+        });
+      }
+
+      // Debit user balance
+      await walletModel.deductBalance(userId, parsedAmount);
+
+      // Record payout
+      const payoutId = await PayoutModel.createPayout(
+        userId,
+        parsedAmount,
+        toAddress,
+        "POL",
+        payoutResponse.payoutId
+      );
+
+      // Audit log
+      await createAuditLog(userId, "WITHDRAW_POL", {
+        amount: parsedAmount,
+        toAddress,
+        payoutId: payoutResponse.payoutId
+      });
+
+      logger.info(`POL withdrawal completed for user ${userId}: ${parsedAmount} POL -> ${toAddress}`);
+
+      res.json({
+        ok: true,
+        message: "Withdrawal successful",
+        payoutId: payoutResponse.payoutId,
+        amount: parsedAmount,
+        newBalance: wallet.balance - parsedAmount
+      });
+
+    } catch (faucetError) {
+      logger.error(`FaucetPay service error for user ${userId}:`, faucetError.message);
+      return res.status(503).json({
+        ok: false,
+        message: "Payment service temporarily unavailable"
+      });
+    }
+
+  } catch (error) {
+    logger.error(`Error in withdrawPOL for user ${req.user?.id}:`, error.message);
+    res.status(500).json({
+      ok: false,
+      message: "Failed to process withdrawal"
+    });
+  }
+}
+
 module.exports = {
   getBalance,
   updateWalletAddress,
   withdraw,
+  withdrawPOL,
   getTransactions,
   getDepositAddress,
   recordDeposit

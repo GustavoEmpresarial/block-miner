@@ -1,62 +1,19 @@
 const { db, run, get } = require("./db");
 
-class FaucetPayModel {
-  // Store FaucetPay account link for user
-  static async linkFaucetPayAccount(userId, faucetPayUserId, faucetPayEmail) {
+class PayoutModel {
+  /**
+   * Create payout record (when user withdraws POL)
+   */
+  static async createPayout(userId, amount, toAddress, currency = "POL", payoutId = null) {
     return new Promise((resolve, reject) => {
       const query = `
-        INSERT OR REPLACE INTO faucetpay_accounts 
-        (user_id, faucetpay_user_id, faucetpay_email, linked_at) 
-        VALUES (?, ?, ?, ?)
-      `;
-      
-      db.run(
-        query,
-        [userId, faucetPayUserId, faucetPayEmail, new Date().toISOString()],
-        function (err) {
-          if (err) {
-            reject(err);
-          } else {
-            resolve({ id: this.lastID });
-          }
-        }
-      );
-    });
-  }
-
-  // Get user's FaucetPay account
-  static async getFaucetPayAccount(userId) {
-    return new Promise((resolve, reject) => {
-      const query = `SELECT * FROM faucetpay_accounts WHERE user_id = ?`;
-      db.get(query, [userId], (err, row) => {
-        if (err) reject(err);
-        else resolve(row || null);
-      });
-    });
-  }
-
-  // Unlink FaucetPay account
-  static async unlinkFaucetPayAccount(userId) {
-    return new Promise((resolve, reject) => {
-      const query = `DELETE FROM faucetpay_accounts WHERE user_id = ?`;
-      db.run(query, [userId], function (err) {
-        if (err) reject(err);
-        else resolve({ changes: this.changes });
-      });
-    });
-  }
-
-  // Create payout record (when paying user via FaucetPay)
-  static async createPayout(userId, amount, currency, payoutId, toAddress) {
-    return new Promise((resolve, reject) => {
-      const query = `
-        INSERT INTO faucetpay_payouts 
-        (user_id, amount, currency, payout_id, to_address, status, created_at) 
+        INSERT INTO faucetpay_payouts
+        (user_id, amount, to_address, currency, payout_id, status, created_at)
         VALUES (?, ?, ?, ?, ?, ?, ?)
       `;
       db.run(
         query,
-        [userId, amount, currency, payoutId, toAddress, "completed", new Date().toISOString()],
+        [userId, amount, toAddress, currency, payoutId, "completed", new Date().toISOString()],
         function (err) {
           if (err) reject(err);
           else {
@@ -64,6 +21,7 @@ class FaucetPayModel {
               id: this.lastID,
               user_id: userId,
               amount,
+              to_address: toAddress,
               currency,
               payout_id: payoutId,
               status: "completed",
@@ -75,13 +33,15 @@ class FaucetPayModel {
     });
   }
 
-  // Get payout history
+  /**
+   * Get payout history for user
+   */
   static async getPayoutHistory(userId, limit = 50) {
     return new Promise((resolve, reject) => {
       const query = `
-        SELECT * FROM faucetpay_payouts 
-        WHERE user_id = ? 
-        ORDER BY created_at DESC 
+        SELECT * FROM faucetpay_payouts
+        WHERE user_id = ?
+        ORDER BY created_at DESC
         LIMIT ?
       `;
       db.all(query, [userId, limit], (err, rows) => {
@@ -90,6 +50,23 @@ class FaucetPayModel {
       });
     });
   }
+
+  /**
+   * Get total withdrawn by user
+   */
+  static async getTotalWithdrawn(userId) {
+    return new Promise((resolve, reject) => {
+      const query = `
+        SELECT COALESCE(SUM(amount), 0) as total
+        FROM faucetpay_payouts
+        WHERE user_id = ? AND status = 'completed'
+      `;
+      db.get(query, [userId], (err, row) => {
+        if (err) reject(err);
+        else resolve(row?.total || 0);
+      });
+    });
+  }
 }
 
-module.exports = FaucetPayModel;
+module.exports = PayoutModel;

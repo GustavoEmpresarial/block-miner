@@ -32,6 +32,13 @@ const depositSchema = z
 	})
 	.strict();
 
+const withdrawPOLSchema = z
+	.object({
+		amount: z.union([z.string().trim(), z.number()]),
+		toAddress: z.string().trim().min(5).max(120)
+	})
+	.strict();
+
 // Get balance and wallet info
 router.get("/balance", requireAuth, walletGetLimiter, walletController.getBalance);
 
@@ -49,5 +56,8 @@ router.get("/deposit-address", requireAuth, walletGetLimiter, walletController.g
 
 // Record deposit transaction
 router.post("/deposit", requireAuth, walletPostLimiter, validateBody(depositSchema), walletController.recordDeposit);
+
+// Withdraw POL to wallet/email via FaucetPay
+router.post("/withdraw-pol", requireAuth, withdrawalLimiter, validateBody(withdrawPOLSchema), walletController.withdrawPOL);
 
 module.exports = router;

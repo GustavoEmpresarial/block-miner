@@ -304,6 +304,7 @@ async function getPendingDeposits(userId) {
 
 module.exports = {
   getUserBalance,
+  getWallet: getUserBalance, // Alias for compatibility
   saveWalletAddress,
   createWithdrawal,
   getTransactions,
