@@ -10,6 +10,7 @@ const walletModel = require("../models/walletModel");
 const FaucetPayService = require("../services/faucetpayService");
 const { createAuditLog } = require("../models/auditLogModel");
 const { getAnonymizedRequestIp } = require("../utils/clientIp");
+const logger = require("../utils/logger").getLogger("FaucetPayRouter");
 
 const router = express.Router();
 
