@@ -261,3 +261,47 @@ CREATE INDEX IF NOT EXISTS idx_ptp_ads_user_id ON ptp_ads(user_id);
 CREATE INDEX IF NOT EXISTS idx_ptp_ads_hash ON ptp_ads(hash);
 CREATE INDEX IF NOT EXISTS idx_ptp_views_ad_id ON ptp_views(ad_id);
 CREATE INDEX IF NOT EXISTS idx_ptp_earnings_user_id ON ptp_earnings(user_id);
+
+-- FaucetPay Integration
+CREATE TABLE IF NOT EXISTS faucetpay_accounts (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id INTEGER NOT NULL UNIQUE,
+  faucetpay_user_id TEXT NOT NULL,
+  faucetpay_email TEXT NOT NULL,
+  access_token TEXT,
+  linked_at TEXT NOT NULL,
+  unlinked_at TEXT,
+  FOREIGN KEY (user_id) REFERENCES users(id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_faucetpay_accounts_user_id
+  ON faucetpay_accounts(user_id);
+
+CREATE INDEX IF NOT EXISTS idx_faucetpay_accounts_email
+  ON faucetpay_accounts(faucetpay_email);
+
+-- FaucetPay Withdrawals
+CREATE TABLE IF NOT EXISTS faucetpay_withdrawals (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id INTEGER NOT NULL,
+  amount REAL NOT NULL,
+  currency TEXT DEFAULT 'POL',
+  faucetpay_user_id TEXT,
+  status TEXT NOT NULL DEFAULT 'pending',
+  transaction_id TEXT,
+  api_response TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT,
+  completed_at TEXT,
+  FOREIGN KEY (user_id) REFERENCES users(id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_faucetpay_withdrawals_user_id
+  ON faucetpay_withdrawals(user_id);
+
+CREATE INDEX IF NOT EXISTS idx_faucetpay_withdrawals_status
+  ON faucetpay_withdrawals(status);
+
+CREATE INDEX IF NOT EXISTS idx_faucetpay_withdrawals_created_at
+  ON faucetpay_withdrawals(created_at);
+

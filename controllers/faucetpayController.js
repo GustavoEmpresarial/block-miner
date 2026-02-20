@@ -2,10 +2,13 @@ const axios = require("axios");
 const FaucetPayModel = require("../models/faucetpayModel");
 const walletModel = require("../models/walletModel");
 const { createAuditLog } = require("../models/auditLogModel");
+const logger = require("../utils/logger").getLogger("FaucetPayController");
 
 const FAUCETPAY_API_URL = process.env.FAUCETPAY_API_URL || "https://api.faucetpay.io";
 const FAUCETPAY_API_KEY = process.env.FAUCETPAY_API_KEY;
 const FAUCETPAY_MERCHANT_ID = process.env.FAUCETPAY_MERCHANT_ID;
+const FAUCETPAY_MIN_WITHDRAWAL = Number(process.env.FAUCETPAY_MIN_WITHDRAWAL || 0.1);
+const FAUCETPAY_MAX_WITHDRAWAL = Number(process.env.FAUCETPAY_MAX_WITHDRAWAL || 1000);
 
 // Initialize FaucetPay client
 function getFaucetPayClient() {
@@ -96,19 +99,14 @@ async function handleCallback(req, res) {
 
 // Link FaucetPay account via email only
 async function linkAccount(req, res) {
-  console.log("[FaucetPay Backend] 🚀 linkAccount called");
-  console.log("[FaucetPay Backend] req.user:", req.user);
-  console.log("[FaucetPay Backend] req.body:", req.body);
-  
   try {
     const userId = req.user.id;
     const { faucetPayEmail } = req.body;
     
-    console.log("[FaucetPay Backend] userId:", userId);
-    console.log("[FaucetPay Backend] faucetPayEmail:", faucetPayEmail);
+    logger.info("linkAccount called", { userId, faucetPayEmail });
 
     if (!faucetPayEmail) {
-      console.log("[FaucetPay Backend] ❌ Email missing");
+      logger.warn("Email missing in linkAccount", { userId });
       return res.status(400).json({
         ok: false,
         message: "FaucetPay email is required"
@@ -117,24 +115,23 @@ async function linkAccount(req, res) {
 
     // Basic email validation
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(faucetPayEmail)) {
-      console.log("[FaucetPay Backend] ❌ Invalid email format");
+      logger.warn("Invalid email format", { userId, faucetPayEmail });
       return res.status(400).json({
         ok: false,
         message: "Invalid email format"
       });
     }
 
-    console.log("[FaucetPay Backend] ✅ Email valid, calling linkFaucetPayAccount...");
     // Use email as faucetPayUserId (FaucetPay accepts email as identifier)
     await FaucetPayModel.linkFaucetPayAccount(userId, faucetPayEmail, faucetPayEmail);
 
-    console.log("[FaucetPay Backend] ✅ Account linked successfully!");
+    logger.info("FaucetPay account linked successfully", { userId, faucetPayEmail });
     res.json({
       ok: true,
       message: "FaucetPay account linked successfully"
     });
   } catch (error) {
-    console.error("[FaucetPay Backend] ❌ Error linking FaucetPay account:", error);
+    logger.error("Error linking FaucetPay account", { userId: req.user?.id, error: error.message });
     res.status(500).json({
       ok: false,
       message: "Failed to link FaucetPay account"
@@ -188,17 +185,29 @@ async function withdrawViaFaucetPay(req, res) {
     const userId = req.user.id;
     const { amount } = req.body;
 
+    logger.info("withdrawViaFaucetPay called", { userId, amount });
+
     // Validate amount
-    if (!amount || amount < 0.1) {
+    if (!amount || amount < FAUCETPAY_MIN_WITHDRAWAL) {
+      logger.warn("Withdrawal amount below minimum", { userId, amount, min: FAUCETPAY_MIN_WITHDRAWAL });
       return res.status(400).json({
         ok: false,
-        message: "Minimum withdrawal is 0.1"
+        message: `Minimum withdrawal is ${FAUCETPAY_MIN_WITHDRAWAL}`
+      });
+    }
+
+    if (amount > FAUCETPAY_MAX_WITHDRAWAL) {
+      logger.warn("Withdrawal amount exceeds maximum", { userId, amount, max: FAUCETPAY_MAX_WITHDRAWAL });
+      return res.status(400).json({
+        ok: false,
+        message: `Maximum withdrawal is ${FAUCETPAY_MAX_WITHDRAWAL}`
       });
     }
 
     // Check if FaucetPay is linked
     const account = await FaucetPayModel.getFaucetPayAccount(userId);
     if (!account) {
+      logger.warn("FaucetPay account not linked", { userId });
       return res.status(400).json({
         ok: false,
         message: "FaucetPay account not linked"
@@ -208,6 +217,7 @@ async function withdrawViaFaucetPay(req, res) {
     // Check user balance
     const userBalance = await walletModel.getUserBalance(userId);
     if (userBalance.balance < amount) {
+      logger.warn("Insufficient balance for withdrawal", { userId, requested: amount, available: userBalance.balance });
       return res.status(400).json({
         ok: false,
         message: "Insufficient balance"
@@ -221,11 +231,13 @@ async function withdrawViaFaucetPay(req, res) {
       account.faucetpay_user_id
     );
 
+    logger.info("Withdrawal record created", { userId, withdrawalId: withdrawal.id, amount });
+
     // Call FaucetPay API to process withdrawal
     try {
       const client = getFaucetPayClient();
       const fpResponse = await client.post("/transfer/send", {
-        recipient_email: account.faucetpay_email, // Use email instead of ID
+        recipient_email: account.faucetpay_email,
         amount: Number(amount),
         currency: "POL",
         memo: `BlockMiner withdrawal #${withdrawal.id}`
@@ -237,6 +249,13 @@ async function withdrawViaFaucetPay(req, res) {
       // Deduct from user balance
       await walletModel.deductBalance(userId, amount);
 
+      logger.info("Withdrawal completed successfully", { 
+        userId, 
+        withdrawalId: withdrawal.id, 
+        amount,
+        transactionId: fpResponse.data?.transaction_id 
+      });
+
       // Audit log
       try {
         await createAuditLog({
@@ -247,7 +266,7 @@ async function withdrawViaFaucetPay(req, res) {
           details: { amount, faucetPayEmail: account.faucetpay_email }
         });
       } catch (logError) {
-        console.error("Failed to write audit log:", logError);
+        logger.warn("Failed to write audit log", { userId, error: logError.message });
       }
 
       res.json({
@@ -261,7 +280,11 @@ async function withdrawViaFaucetPay(req, res) {
         }
       });
     } catch (fpError) {
-      console.error("FaucetPay API error:", fpError.response?.data || fpError.message);
+      logger.error("FaucetPay API error", {
+        userId,
+        withdrawalId: withdrawal.id,
+        error: fpError.response?.data || fpError.message
+      });
 
       // Update withdrawal status to failed
       await FaucetPayModel.updateFaucetPayWithdrawalStatus(
@@ -276,7 +299,7 @@ async function withdrawViaFaucetPay(req, res) {
       });
     }
   } catch (error) {
-    console.error("Error processing FaucetPay withdrawal:", error);
+    logger.error("Error processing FaucetPay withdrawal", { userId: req.user?.id, error: error.message });
     res.status(500).json({
       ok: false,
       message: "Failed to process withdrawal"

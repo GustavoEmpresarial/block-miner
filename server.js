@@ -27,13 +27,16 @@ const { verifyAccessToken } = require("./utils/authTokens");
 const { getOrCreateMinerProfile } = require("./models/minerProfileModel");
 const { getBrazilCheckinDateKey } = require("./utils/checkinDate");
 const { startCronTasks } = require("./cron");
+const logger = require("./utils/logger");
 
 // Validate JWT_SECRET before starting
 const JWT_SECRET = process.env.JWT_SECRET;
 if (!JWT_SECRET) {
+  logger.error("CRITICAL: JWT_SECRET environment variable is required");
   throw new Error("CRITICAL: JWT_SECRET environment variable is required");
 }
 if (JWT_SECRET.length < 32) {
+  logger.error("CRITICAL: JWT_SECRET must be at least 32 characters long for security");
   throw new Error("CRITICAL: JWT_SECRET must be at least 32 characters long for security");
 }
 
@@ -90,7 +93,7 @@ async function ensureCheckinConfirmed(checkin) {
       return { ...checkin, status: "confirmed" };
     }
   } catch (error) {
-    console.error("Failed to confirm check-in status:", error);
+    logger.error("Failed to confirm check-in status", { error: error.message });
   }
 
   return checkin;
@@ -233,13 +236,13 @@ app.use((req, res, next) => {
   const normalizedPath = decodedPath.replace(/\\/g, "/");
 
   if (normalizedPath.includes("..")) {
-    console.warn("[blocked]", req.method, rawPath, "reason=path_traversal");
+    logger.warn("Blocked path traversal attempt", { method: req.method, path: rawPath });
     res.status(400).send("Bad request");
     return;
   }
 
   if (blockedPrefixes.some((prefix) => normalizedPath.startsWith(prefix))) {
-    console.warn("[blocked]", req.method, rawPath, "reason=internal_prefix");
+    logger.warn("Blocked internal resource access attempt", { method: req.method, path: rawPath });
     res.status(403).send("Forbidden");
     return;
   }
@@ -248,7 +251,7 @@ app.use((req, res, next) => {
   if (extension && blockedExtensions.has(extension)) {
     const isAllowedStatic = allowedStaticPrefixes.some((prefix) => normalizedPath.startsWith(prefix));
     if (!isAllowedStatic) {
-      console.warn("[blocked]", req.method, rawPath, `reason=blocked_extension:${extension}`);
+      logger.warn("Blocked file extension access", { method: req.method, path: rawPath, extension });
       res.status(403).send("Forbidden");
       return;
     }
@@ -259,7 +262,7 @@ app.use((req, res, next) => {
 app.use((req, res, next) => {
   if (req.path.endsWith(".css") || req.path.endsWith(".js")) {
     res.on("finish", () => {
-      console.log(`[asset] ${req.method} ${req.path} -> ${res.statusCode}`);
+      logger.debug(`Asset served: ${req.method} ${req.path}", { statusCode: res.statusCode });
     });
   }
 
@@ -769,18 +772,18 @@ initializeDatabase()
   .then(() => {
     startCronTasks({ engine, io, persistMinerProfile, run, buildPublicState });
     server.listen(PORT, "0.0.0.0", () => {
-      console.log(`BlockMiner listening on http://localhost:${PORT}`);
+      logger.info(`BlockMiner server started on port ${PORT}`, { env: process.env.NODE_ENV });
       const localAddresses = getLocalIpv4Addresses();
       if (localAddresses.length) {
         for (const address of localAddresses) {
-          console.log(`BlockMiner LAN: http://${address}:${PORT}`);
+          logger.info(`BlockMiner LAN accessible at http://${address}:${PORT}`, { address });
         }
       } else {
-        console.log("BlockMiner LAN: unable to detect local IP address.");
+        logger.warn("Unable to detect local IP address for LAN access");
       }
     });
   })
   .catch((error) => {
-    console.error("Failed to initialize database", error);
+    logger.error("Failed to initialize database", { error: error.message });
     process.exit(1);
   });
