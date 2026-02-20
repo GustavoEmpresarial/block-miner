@@ -10,43 +10,132 @@ const { updateUserLoginMeta } = require("../models/userModel");
 const { createAuditLog } = require("../models/auditLogModel");
 const { createRateLimiter } = require("../middleware/rateLimit");
 const { validateBody } = require("../middleware/validate");
-const { getUserByRefCode, createReferral } = require("../models/referralModel");
+const { requireAuth } = require("../middleware/auth");
+const { getUserByRefCode, createReferral, listReferredUsers } = require("../models/referralModel");
 const { getMinerBySlug } = require("../models/minersModel");
 const { addInventoryItem } = require("../models/inventoryModel");
+const { getAnonymizedRequestIp } = require("../utils/clientIp");
+const logger = require("../utils/logger").child("AuthRoutes");
 
 const authRouter = express.Router();
 
-// Track failed login attempts for brute-force protection
-const failedAttempts = new Map();
-const MAX_FAILED_ATTEMPTS = 5;
-const LOCKOUT_DURATION_MS = 15 * 60 * 1000; // 15 minutes
-
-function checkAccountLockout(email) {
-  const record = failedAttempts.get(email);
-  if (!record) return false;
-  
-  if (Date.now() < record.lockedUntil) {
-    return true; // Account is locked
-  }
-  
-  // Lockout expired, clear it
-  failedAttempts.delete(email);
-  return false;
+function parseIntOr(value, fallback) {
+  const parsed = Number.parseInt(String(value), 10);
+  return Number.isFinite(parsed) ? parsed : fallback;
 }
 
-function recordFailedAttempt(email) {
-  const record = failedAttempts.get(email) || { count: 0, lockedUntil: 0 };
-  record.count += 1;
-  
-  if (record.count >= MAX_FAILED_ATTEMPTS) {
-    record.lockedUntil = Date.now() + LOCKOUT_DURATION_MS;
-  }
-  
-  failedAttempts.set(email, record);
+const MAX_FAILED_ATTEMPTS_EMAIL = parseIntOr(process.env.MAX_FAILED_ATTEMPTS_EMAIL, 5);
+const MAX_FAILED_ATTEMPTS_IP = parseIntOr(process.env.MAX_FAILED_ATTEMPTS_IP, 15);
+const LOCKOUT_DURATION_MS = parseIntOr(process.env.LOCKOUT_DURATION_MS, 15 * 60 * 1000); // 15 minutes
+const ATTEMPT_TTL_MS = parseIntOr(process.env.LOGIN_ATTEMPT_TTL_MS, 60 * 60 * 1000); // 1 hour
+
+const CLEANUP_SAMPLE_RATE = Math.min(1, Math.max(0, Number(process.env.LOGIN_ATTEMPT_CLEANUP_RATE || 0.03)));
+
+function normalizeEmail(email) {
+  return String(email || "").trim().toLowerCase();
 }
 
-function clearFailedAttempts(email) {
-  failedAttempts.delete(email);
+function maskEmail(email) {
+  const value = normalizeEmail(email);
+  const at = value.indexOf("@");
+  if (at <= 1) return value ? "***" : "";
+  const user = value.slice(0, at);
+  const domain = value.slice(at + 1);
+  return `${user[0]}***@${domain}`;
+}
+
+async function maybeCleanupLockouts() {
+  if (CLEANUP_SAMPLE_RATE <= 0) return;
+  if (Math.random() > CLEANUP_SAMPLE_RATE) return;
+
+  const now = Date.now();
+  const cutoff = now - ATTEMPT_TTL_MS;
+
+  try {
+    await run(
+      "DELETE FROM auth_lockouts WHERE last_at < ? AND (locked_until IS NULL OR locked_until <= ?)",
+      [cutoff, now]
+    );
+  } catch (error) {
+    logger.debug("Failed to cleanup auth_lockouts", { error: error.message });
+  }
+}
+
+async function getLockout(kind, value) {
+  const row = await get(
+    "SELECT count, locked_until, last_at FROM auth_lockouts WHERE kind = ? AND value = ?",
+    [kind, value]
+  );
+
+  if (!row) return null;
+
+  const now = Date.now();
+  const lockedUntil = Number(row.locked_until || 0);
+  const lastAt = Number(row.last_at || 0);
+
+  // Expired or stale records can be ignored.
+  if ((lockedUntil && now >= lockedUntil) || (lastAt && now - lastAt > ATTEMPT_TTL_MS && now >= lockedUntil)) {
+    try {
+      await run("DELETE FROM auth_lockouts WHERE kind = ? AND value = ?", [kind, value]);
+    } catch {
+      // ignore
+    }
+    return null;
+  }
+
+  return {
+    count: Number(row.count || 0),
+    lockedUntil,
+    lastAt
+  };
+}
+
+async function isLocked(kind, value) {
+  const record = await getLockout(kind, value);
+  return Boolean(record && record.lockedUntil && Date.now() < record.lockedUntil);
+}
+
+async function recordFailed(kind, value, maxFails) {
+  const now = Date.now();
+  const current = await getLockout(kind, value);
+  const nextCount = (current?.count || 0) + 1;
+  const shouldLock = nextCount >= maxFails;
+  const lockedUntil = shouldLock ? now + LOCKOUT_DURATION_MS : Number(current?.lockedUntil || 0);
+
+  await run(
+    `
+      INSERT INTO auth_lockouts (kind, value, count, locked_until, last_at)
+      VALUES (?, ?, ?, ?, ?)
+      ON CONFLICT(kind, value) DO UPDATE SET
+        count = excluded.count,
+        locked_until = excluded.locked_until,
+        last_at = excluded.last_at
+    `,
+    [kind, value, nextCount, lockedUntil, now]
+  );
+
+  return { count: nextCount, lockedUntil, lastAt: now };
+}
+
+async function clearFailures(kind, value) {
+  if (!value) return;
+  await run("DELETE FROM auth_lockouts WHERE kind = ? AND value = ?", [kind, value]);
+}
+
+async function auditAuthEvent(req, { userId, action, details }) {
+  const ipPrefix = getAnonymizedRequestIp(req);
+  const userAgent = req.get("user-agent");
+  try {
+    await createAuditLog({
+      userId: userId || null,
+      action,
+      ip: ipPrefix,
+      userAgent,
+      details
+    });
+  } catch (error) {
+    logger.warn("Failed to write auth audit log", { action, error: error.message });
+  }
 }
 
 function buildCookie(name, value, maxAgeSeconds) {
@@ -206,6 +295,21 @@ authRouter.post("/register", authLimiter, validateBody(registerSchema), async (r
       expiresAt: refreshToken.expiresAt
     });
 
+    const ipPrefix = getAnonymizedRequestIp(req);
+    const userAgent = req.get("user-agent");
+    await updateUserLoginMeta(insertResult.lastID, { ip: ipPrefix, userAgent });
+    try {
+      await createAuditLog({
+        userId: insertResult.lastID,
+        action: "register",
+        ip: ipPrefix,
+        userAgent,
+        details: { email, referredBy: referredBy || null }
+      });
+    } catch (logError) {
+      console.error("Failed to write register audit log:", logError);
+    }
+
     res.setHeader("Set-Cookie", [
       buildAccessCookie(accessToken),
       buildRefreshCookie(refreshToken.token, refreshToken.expiresAt)
@@ -224,39 +328,59 @@ authRouter.post("/register", authLimiter, validateBody(registerSchema), async (r
 
 authRouter.post("/login", authLimiter, validateBody(loginSchema), async (req, res) => {
   try {
-    const email = String(req.body?.email || "").trim().toLowerCase();
+    const email = normalizeEmail(req.body?.email);
     const password = String(req.body?.password || "");
+    const ipKey = String(req.ip || "unknown");
+
+    await maybeCleanupLockouts();
 
     if (!email || !password) {
       res.status(400).json({ ok: false, message: "Email and password are required." });
       return;
     }
 
-    // Check if account is locked due to failed attempts
-    if (checkAccountLockout(email)) {
-      res.status(429).json({ 
-        ok: false, 
-        message: "Account temporarily locked. Try again in 15 minutes." 
+    // Check lockout by email/IP
+    if (await isLocked("email", email) || await isLocked("ip", ipKey)) {
+      await auditAuthEvent(req, {
+        userId: null,
+        action: "login_locked",
+        details: { email: maskEmail(email) }
       });
+      res.status(429).json({ ok: false, message: "Account temporarily locked. Try again later." });
       return;
     }
 
     const user = await get("SELECT id, name, email, password_hash FROM users WHERE email = ?", [email]);
     if (!user) {
-      recordFailedAttempt(email);
+      await recordFailed("email", email, MAX_FAILED_ATTEMPTS_EMAIL);
+      await recordFailed("ip", ipKey, MAX_FAILED_ATTEMPTS_IP);
+      await auditAuthEvent(req, {
+        userId: null,
+        action: "login_failed",
+        details: { email: maskEmail(email), reason: "user_not_found" }
+      });
       res.status(401).json({ ok: false, message: "Invalid email or password." });
       return;
     }
 
     const isPasswordValid = await bcrypt.compare(password, user.password_hash);
     if (!isPasswordValid) {
-      recordFailedAttempt(email);
+      await recordFailed("email", email, MAX_FAILED_ATTEMPTS_EMAIL);
+      await recordFailed("ip", ipKey, MAX_FAILED_ATTEMPTS_IP);
+      await auditAuthEvent(req, {
+        userId: user.id,
+        action: "login_failed",
+        details: { email: maskEmail(email), reason: "bad_password" }
+      });
       res.status(401).json({ ok: false, message: "Invalid email or password." });
       return;
     }
 
     // Clear failed attempts on successful login
-    clearFailedAttempts(email);
+    await Promise.allSettled([
+      clearFailures("email", email),
+      clearFailures("ip", ipKey)
+    ]);
 
     const accessToken = signAccessToken({ id: user.id, name: user.name, email: user.email });
     const refreshToken = createRefreshToken();
@@ -268,22 +392,15 @@ authRouter.post("/login", authLimiter, validateBody(loginSchema), async (req, re
       expiresAt: refreshToken.expiresAt
     });
 
+    const ipPrefix = getAnonymizedRequestIp(req);
+    const userAgent = req.get("user-agent");
+
     await updateUserLoginMeta(user.id, {
-      ip: req.ip,
-      userAgent: req.get("user-agent")
+      ip: ipPrefix,
+      userAgent
     });
 
-    try {
-      await createAuditLog({
-        userId: user.id,
-        action: "login",
-        ip: req.ip,
-        userAgent: req.get("user-agent"),
-        details: { email }
-      });
-    } catch (logError) {
-      console.error("Failed to write login audit log:", logError);
-    }
+    await auditAuthEvent(req, { userId: user.id, action: "login", details: { email: maskEmail(email) } });
 
     res.setHeader("Set-Cookie", [
       buildAccessCookie(accessToken),
@@ -347,28 +464,33 @@ authRouter.post("/refresh", refreshLimiter, async (req, res) => {
     const rawToken = getRefreshTokenFromRequest(req);
     const parsed = parseRefreshToken(rawToken);
     if (!parsed) {
+      await auditAuthEvent(req, { userId: null, action: "refresh_failed", details: { reason: "parse_failed" } });
       res.status(401).json({ ok: false, message: "Refresh token invalid." });
       return;
     }
 
     const existing = await getRefreshTokenById(parsed.tokenId);
     if (!existing || existing.revoked_at || existing.expires_at <= Date.now()) {
+      await auditAuthEvent(req, { userId: null, action: "refresh_failed", details: { reason: "token_missing_or_revoked" } });
       res.status(401).json({ ok: false, message: "Refresh token invalid." });
       return;
     }
 
     if (existing.token_hash !== parsed.tokenHash) {
+      await auditAuthEvent(req, { userId: existing.user_id || null, action: "refresh_failed", details: { reason: "hash_mismatch" } });
       res.status(401).json({ ok: false, message: "Refresh token invalid." });
       return;
     }
 
     const user = await get("SELECT id, name, email, is_banned FROM users WHERE id = ?", [existing.user_id]);
     if (!user) {
+      await auditAuthEvent(req, { userId: existing.user_id || null, action: "refresh_failed", details: { reason: "user_missing" } });
       res.status(401).json({ ok: false, message: "Refresh token invalid." });
       return;
     }
 
     if (user.is_banned) {
+      await auditAuthEvent(req, { userId: user.id, action: "refresh_failed", details: { reason: "user_banned" } });
       res.status(403).json({ ok: false, message: "Account disabled." });
       return;
     }
@@ -389,6 +511,8 @@ authRouter.post("/refresh", refreshLimiter, async (req, res) => {
       buildAccessCookie(accessToken),
       buildRefreshCookie(refreshToken.token, refreshToken.expiresAt)
     ]);
+
+    await auditAuthEvent(req, { userId: user.id, action: "refresh", details: {} });
 
     res.json({ ok: true, token: accessToken });
   } catch (error) {
@@ -423,6 +547,22 @@ authRouter.get("/referral", async (req, res) => {
   }
 });
 
+authRouter.get("/referral/invited", requireAuth, async (req, res) => {
+  try {
+    const limit = Number(req.query?.limit || 50);
+    const rows = await listReferredUsers(req.user.id, limit);
+    const invited = rows.map((row) => ({
+      id: row.id,
+      username: row.username || row.name || `User #${row.id}`,
+      joinedAt: row.user_created_at,
+      referredAt: row.referred_at
+    }));
+    res.json({ ok: true, invited });
+  } catch (error) {
+    res.status(500).json({ ok: false, message: "Unable to load invited users." });
+  }
+});
+
 authRouter.post("/logout", async (req, res) => {
   try {
     const refreshRaw = getRefreshTokenFromRequest(req);
@@ -430,6 +570,8 @@ authRouter.post("/logout", async (req, res) => {
     if (parsed?.tokenId) {
       await revokeRefreshToken({ tokenId: parsed.tokenId, revokedAt: Date.now(), replacedBy: null });
     }
+
+    await auditAuthEvent(req, { userId: null, action: "logout", details: {} });
 
     res.setHeader("Set-Cookie", clearAuthCookies());
     res.status(200).json({ ok: true });

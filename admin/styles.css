@@ -149,6 +149,67 @@ tbody td {
   color: #6bb7ff;
 }
 
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 0.9rem;
+}
+
+.stat-card {
+  background: rgba(15, 22, 40, 0.9);
+  border: 1px solid rgba(109, 131, 179, 0.3);
+  border-radius: 12px;
+  padding: 0.9rem 1rem;
+  display: grid;
+  gap: 0.25rem;
+}
+
+.stat-label {
+  color: #a8b3d9;
+  font-size: 0.85rem;
+}
+
+.stat-value {
+  font-size: 1.4rem;
+  font-weight: 800;
+  color: #eef2ff;
+}
+
+.table-compact {
+  min-width: 900px;
+}
+
+.table-compact thead th {
+  font-size: 0.8rem;
+}
+
+.table-compact tbody td {
+  font-size: 0.9rem;
+}
+
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.18rem 0.55rem;
+  border-radius: 999px;
+  border: 1px solid rgba(109, 131, 179, 0.35);
+  background: rgba(10, 16, 30, 0.55);
+  color: #ccd6f6;
+  font-size: 0.8rem;
+  font-weight: 650;
+}
+
+.pill.good {
+  border-color: rgba(76, 193, 130, 0.45);
+  color: #52d48c;
+}
+
+.pill.bad {
+  border-color: rgba(196, 88, 88, 0.45);
+  color: #ff7b7b;
+}
+
 @media (max-width: 700px) {
   .admin-header {
     flex-direction: column;

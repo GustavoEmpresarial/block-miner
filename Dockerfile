@@ -8,7 +8,7 @@ RUN npm ci --omit=dev
 
 COPY . .
 
-RUN mkdir -p data
+RUN mkdir -p data backups
 
 ENV NODE_ENV=production
 

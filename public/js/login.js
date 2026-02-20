@@ -2,6 +2,20 @@ const form = document.getElementById("loginForm");
 const feedback = document.getElementById("feedback");
 const submitBtn = form?.querySelector("button[type='submit']");
 
+function getCookie(name) {
+  const cookieString = document.cookie || "";
+  const parts = cookieString.split(";").map((part) => part.trim());
+  for (const part of parts) {
+    if (!part) continue;
+    const eqIndex = part.indexOf("=");
+    if (eqIndex === -1) continue;
+    const key = part.slice(0, eqIndex);
+    if (key !== name) continue;
+    return decodeURIComponent(part.slice(eqIndex + 1));
+  }
+  return null;
+}
+
 function setFeedback(message, isError = false) {
   if (!feedback) return;
   feedback.textContent = message;
@@ -48,10 +62,12 @@ form?.addEventListener("submit", async (event) => {
 
   try {
     setLoading(true);
+    const csrf = getCookie("blockminer_csrf");
     const response = await fetch("/api/auth/login", {
       method: "POST",
       headers: {
-        "Content-Type": "application/json"
+        "Content-Type": "application/json",
+        ...(csrf ? { "X-CSRF-Token": csrf } : {})
       },
       body: JSON.stringify({ email, password })
     });

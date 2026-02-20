@@ -56,6 +56,20 @@
           <li>Rewards are applied automatically.</li>
         </ul>
       </section>
+
+      <section class="card referral-invited">
+        <div class="referral-row">
+          <div>
+            <h2>Invited users</h2>
+            <p class="muted" id="invitedHint">People who registered using your link.</p>
+          </div>
+          <button id="refreshInvitesBtn" class="btn" type="button">
+            <i class="bi bi-arrow-repeat"></i> Refresh
+          </button>
+        </div>
+
+        <div id="invitedList" class="invited-list" aria-live="polite"></div>
+      </section>
     </main>
 
     <script src="/js/layout.js"></script>

@@ -515,6 +515,23 @@
   line-height: 1.4;
 }
 
+/* Ensure anchor buttons inside faucetpay-status behave like buttons (avoid inline overlap). */
+.faucetpay-status > a.btn,
+.faucetpay-status > button.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  line-height: 1.1;
+  position: static;
+  margin-top: 0.2rem;
+}
+
+.faucetpay-status > a.btn.btn-block,
+.faucetpay-status > button.btn.btn-block {
+  width: 100%;
+}
+
 .faucetpay-form {
   display: flex;
   flex-direction: column;

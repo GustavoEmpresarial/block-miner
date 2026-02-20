@@ -85,18 +85,6 @@ body.with-layout main {
   gap: 0.5rem;
 }
 
-.nav-menu-btn {
-  display: none;
-  padding: 0.45rem 0.65rem;
-  border-radius: 10px;
-  min-width: 38px;
-  justify-content: center;
-}
-
-.nav-menu-btn i {
-  font-size: 1.45rem;
-}
-
 .nav-link {
   border: 1px solid rgba(109, 131, 179, 0.45);
   background: rgba(24, 36, 66, 0.9);
@@ -112,6 +100,18 @@ body.with-layout main {
   gap: 0.7rem;
   box-shadow: none;
   transition: background 0.18s, border-color 0.18s, color 0.18s;
+}
+
+.nav-link.nav-menu-btn {
+  display: none;
+  padding: 0.45rem 0.65rem;
+  border-radius: 10px;
+  min-width: 38px;
+  justify-content: center;
+}
+
+.nav-link.nav-menu-btn i {
+  font-size: 1.45rem;
 }
 
 .nav-link:hover {
@@ -334,7 +334,7 @@ body.with-layout main {
     transform: translateX(0);
   }
 
-  .nav-menu-btn {
+  .nav-link.nav-menu-btn {
     display: inline-flex;
   }
 

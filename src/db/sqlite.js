@@ -197,6 +197,25 @@ async function initializeDatabase() {
   `);
 
   await run(`
+    CREATE TABLE IF NOT EXISTS auth_lockouts (
+      kind TEXT NOT NULL,
+      value TEXT NOT NULL,
+      count INTEGER NOT NULL DEFAULT 0,
+      locked_until INTEGER NOT NULL DEFAULT 0,
+      last_at INTEGER NOT NULL,
+      PRIMARY KEY (kind, value)
+    )
+  `);
+
+  await run(`
+    CREATE INDEX IF NOT EXISTS idx_auth_lockouts_locked_until ON auth_lockouts(locked_until)
+  `);
+
+  await run(`
+    CREATE INDEX IF NOT EXISTS idx_auth_lockouts_last_at ON auth_lockouts(last_at)
+  `);
+
+  await run(`
     CREATE TABLE IF NOT EXISTS referrals (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       referrer_id INTEGER NOT NULL,

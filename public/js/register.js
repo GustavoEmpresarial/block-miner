@@ -113,10 +113,12 @@ form?.addEventListener("submit", async (event) => {
 
   try {
     setLoading(true);
+    const csrf = getCookie("blockminer_csrf");
     const response = await fetch("/api/auth/register", {
       method: "POST",
       headers: {
-        "Content-Type": "application/json"
+        "Content-Type": "application/json",
+        ...(csrf ? { "X-CSRF-Token": csrf } : {})
       },
       body: JSON.stringify({ username, email, password, refCode })
     });

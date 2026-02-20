@@ -1,5 +1,6 @@
 const { ethers } = require("ethers");
 const walletModel = require("../models/walletModel");
+const logger = require("../utils/logger").child("DepositsCron");
 
 const POLYGON_RPC_URL = process.env.POLYGON_RPC_URL || "https://polygon-rpc.com";
 const DEFAULT_RPC_URLS = [
@@ -29,7 +30,7 @@ async function getProvider() {
       await provider.getBlockNumber();
       return provider;
     } catch (error) {
-      console.warn(`RPC ${RPC_URLS[currentProviderIndex]} failed, trying next...`);
+      logger.warn("RPC failed, trying next", { url: RPC_URLS[currentProviderIndex], error: error.message });
       currentProviderIndex = (currentProviderIndex + 1) % RPC_URLS.length;
     }
   }
@@ -58,7 +59,7 @@ async function checkPendingDeposits() {
       return;
     }
 
-    console.log(`Checking ${pendingDeposits.length} pending deposits...`);
+    logger.info("Checking pending deposits", { count: pendingDeposits.length });
 
     for (const deposit of pendingDeposits) {
       try {
@@ -79,28 +80,28 @@ async function checkPendingDeposits() {
 
         if (!isSameAddress(tx.to, CHECKIN_RECEIVER)) {
           await walletModel.updateDepositStatus(deposit.id, "invalid");
-          console.warn(`Deposit ${deposit.tx_hash} rejected: destination mismatch`);
+          logger.warn("Deposit rejected: destination mismatch", { txHash: deposit.tx_hash, userId: deposit.user_id });
           continue;
         }
 
         const actualAmount = Number(Number(ethers.formatEther(tx.value || 0)).toFixed(6));
         if (!actualAmount || actualAmount <= 0) {
           await walletModel.updateDepositStatus(deposit.id, "invalid");
-          console.warn(`Deposit ${deposit.tx_hash} rejected: invalid amount`);
+          logger.warn("Deposit rejected: invalid amount", { txHash: deposit.tx_hash, userId: deposit.user_id });
           continue;
         }
 
         await walletModel.creditBalance(deposit.user_id, actualAmount);
         await walletModel.updateDepositStatus(deposit.id, "completed", actualAmount);
 
-        console.log(`✅ Deposit ${deposit.tx_hash} confirmed for user ${deposit.user_id}: ${actualAmount} POL`);
+        logger.info("Deposit confirmed", { txHash: deposit.tx_hash, userId: deposit.user_id, amountPol: actualAmount });
       } catch (error) {
-        console.error(`Error checking deposit ${deposit.tx_hash}:`, error.message);
+        logger.error("Error checking deposit", { txHash: deposit.tx_hash, error: error.message });
       }
     }
 
   } catch (error) {
-    console.error("Error in deposit check cron:", error);
+    logger.error("Error in deposit check cron", { error: error.message });
   }
 }
 
@@ -111,7 +112,7 @@ function startDepositMonitoring() {
   // Run immediately on start
   checkPendingDeposits();
   
-  console.log("✅ Deposit monitoring started (checking every 30 seconds)");
+  logger.info("Deposit monitoring started", { intervalMs: 30000 });
   
   return {
     depositMonitoringInterval: interval

@@ -4,6 +4,7 @@ const PayoutModel = require("../models/faucetpayModel");
 const { createAuditLog } = require("../models/auditLogModel");
 const FaucetPayService = require("../services/faucetpayService");
 const logger = require("../utils/logger").getLogger("WalletController");
+const { getAnonymizedRequestIp } = require("../utils/clientIp");
 
 const POLYGON_RPC_URL = process.env.POLYGON_RPC_URL || "https://polygon-rpc.com";
 const DEFAULT_RPC_URLS = [
@@ -279,7 +280,7 @@ async function withdraw(req, res) {
       await createAuditLog({
         userId,
         action: "withdrawal",
-        ip: req.ip,
+        ip: getAnonymizedRequestIp(req),
         userAgent: req.get("user-agent"),
         details: { amount, address, txHash, status: txHash ? "completed" : "pending" }
       });
@@ -511,21 +512,21 @@ async function monitorDeposit(userId, txHash, depositAddress, depositId) {
         await walletModel.creditBalance(userId, actualAmount);
         await walletModel.updateDepositStatus(depositId, "completed", actualAmount);
 
-        console.log(`Deposit ${txHash} confirmed and credited to user ${userId}`);
+        logger.info("Deposit confirmed and credited", { txHash, userId, amountPol: actualAmount });
         confirmed = true;
       } catch (error) {
-        console.error(`Error checking transaction ${txHash}:`, error.message);
+        logger.error("Error checking transaction", { txHash, error: error.message });
       }
       
       attempts++;
     }
     
     if (!confirmed) {
-      console.log(`Deposit ${txHash} monitoring timed out. Will be checked by cron job.`);
+      logger.warn("Deposit monitoring timed out; will be checked by cron", { txHash, userId });
     }
     
   } catch (error) {
-    console.error("Error monitoring deposit:", error);
+    logger.error("Error monitoring deposit", { error: error.message });
   }
 }
 
@@ -600,10 +601,16 @@ async function withdrawPOL(req, res) {
       );
 
       // Audit log
-      await createAuditLog(userId, "WITHDRAW_POL", {
-        amount: parsedAmount,
-        toAddress,
-        payoutId: payoutResponse.payoutId
+      await createAuditLog({
+        userId,
+        action: "WITHDRAW_POL",
+        ip: getAnonymizedRequestIp(req),
+        userAgent: req.get("user-agent"),
+        details: {
+          amount: parsedAmount,
+          toAddress,
+          payoutId: payoutResponse.payoutId
+        }
       });
 
       logger.info(`POL withdrawal completed for user ${userId}: ${parsedAmount} POL -> ${toAddress}`);

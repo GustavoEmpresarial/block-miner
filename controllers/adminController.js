@@ -1,4 +1,5 @@
 const minersModel = require("../models/minersModel");
+const { get, all, run } = require("../models/db");
 
 function toTrimmedString(value) {
   if (typeof value !== "string") return "";
@@ -73,6 +74,131 @@ function validateMinerPayload(body) {
 }
 
 function createAdminController() {
+  async function getStats(_req, res) {
+    try {
+      const now = Date.now();
+      const dayAgo = now - 24 * 60 * 60 * 1000;
+      const weekAgo = now - 7 * 24 * 60 * 60 * 1000;
+
+      const [
+        usersTotal,
+        usersBanned,
+        usersNew24h,
+        minersTotal,
+        minersActive,
+        inventoryTotal,
+        balances,
+        tx24h,
+        referralsTotal,
+        faucetpayLinked,
+        audit24h
+      ] = await Promise.all([
+        get("SELECT COUNT(*) AS count FROM users"),
+        get("SELECT COUNT(*) AS count FROM users WHERE is_banned = 1"),
+        get("SELECT COUNT(*) AS count FROM users WHERE created_at >= ?", [dayAgo]),
+        get("SELECT COUNT(*) AS count FROM miners"),
+        get("SELECT COUNT(*) AS count FROM miners WHERE is_active = 1"),
+        get("SELECT COUNT(*) AS count FROM user_inventory"),
+        get(
+          "SELECT COALESCE(SUM(balance), 0) AS balance, COALESCE(SUM(lifetime_mined), 0) AS lifetime, COALESCE(SUM(total_withdrawn), 0) AS withdrawn FROM users_temp_power"
+        ),
+        get(
+          "SELECT COUNT(*) AS count FROM transactions WHERE created_at >= ?",
+          [dayAgo]
+        ),
+        get("SELECT COUNT(*) AS count FROM referrals"),
+        get("SELECT COUNT(*) AS count FROM faucetpay_accounts"),
+        get("SELECT COUNT(*) AS count FROM audit_logs WHERE created_at >= ?", [dayAgo])
+      ]);
+
+      const lockoutsWeek = await get(
+        "SELECT COUNT(*) AS count FROM auth_lockouts WHERE last_at >= ?",
+        [weekAgo]
+      ).catch(() => ({ count: 0 }));
+
+      res.json({
+        ok: true,
+        stats: {
+          usersTotal: Number(usersTotal?.count || 0),
+          usersBanned: Number(usersBanned?.count || 0),
+          usersNew24h: Number(usersNew24h?.count || 0),
+          minersTotal: Number(minersTotal?.count || 0),
+          minersActive: Number(minersActive?.count || 0),
+          inventoryTotal: Number(inventoryTotal?.count || 0),
+          balanceTotal: Number(balances?.balance || 0),
+          lifetimeMinedTotal: Number(balances?.lifetime || 0),
+          totalWithdrawn: Number(balances?.withdrawn || 0),
+          transactions24h: Number(tx24h?.count || 0),
+          referralsTotal: Number(referralsTotal?.count || 0),
+          faucetpayLinked: Number(faucetpayLinked?.count || 0),
+          auditEvents24h: Number(audit24h?.count || 0),
+          lockouts7d: Number(lockoutsWeek?.count || 0)
+        }
+      });
+    } catch (error) {
+      console.error("Admin stats error:", error);
+      res.status(500).json({ ok: false, message: "Unable to load admin stats." });
+    }
+  }
+
+  async function listRecentUsers(req, res) {
+    try {
+      const limit = Math.max(1, Math.min(200, Number(req.query?.limit || 25)));
+      const users = await all(
+        `
+          SELECT id, username, name, email, is_banned, created_at, last_login_at
+          FROM users
+          ORDER BY created_at DESC
+          LIMIT ?
+        `,
+        [limit]
+      );
+
+      res.json({ ok: true, users });
+    } catch (error) {
+      console.error("Admin list users error:", error);
+      res.status(500).json({ ok: false, message: "Unable to load users." });
+    }
+  }
+
+  async function listAuditLogs(req, res) {
+    try {
+      const limit = Math.max(1, Math.min(300, Number(req.query?.limit || 50)));
+      const logs = await all(
+        `
+          SELECT a.id, a.user_id, u.email AS user_email, a.action, a.ip, a.created_at
+          FROM audit_logs a
+          LEFT JOIN users u ON u.id = a.user_id
+          ORDER BY a.created_at DESC
+          LIMIT ?
+        `,
+        [limit]
+      );
+      res.json({ ok: true, logs });
+    } catch (error) {
+      console.error("Admin list audit logs error:", error);
+      res.status(500).json({ ok: false, message: "Unable to load audit logs." });
+    }
+  }
+
+  async function setUserBan(req, res) {
+    try {
+      const userId = Number(req.params?.id);
+      if (!Number.isInteger(userId) || userId <= 0) {
+        res.status(400).json({ ok: false, message: "Invalid user id" });
+        return;
+      }
+
+      const isBanned = Boolean(req.body?.isBanned);
+      await run("UPDATE users SET is_banned = ? WHERE id = ?", [isBanned ? 1 : 0, userId]);
+      const updated = await get("SELECT id, email, is_banned FROM users WHERE id = ?", [userId]);
+      res.json({ ok: true, user: updated });
+    } catch (error) {
+      console.error("Admin set user ban error:", error);
+      res.status(500).json({ ok: false, message: "Unable to update user." });
+    }
+  }
+
   async function listMiners(_req, res) {
     try {
       const miners = await minersModel.listAllMiners();
@@ -136,6 +262,10 @@ function createAdminController() {
   }
 
   return {
+    getStats,
+    listRecentUsers,
+    listAuditLogs,
+    setUserBan,
     listMiners,
     createMiner,
     updateMiner

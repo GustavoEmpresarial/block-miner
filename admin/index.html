@@ -17,6 +17,57 @@
       </header>
 
       <section class="card">
+        <div class="table-header">
+          <h2>Dashboard</h2>
+          <span id="dashboardStatus" class="status"></span>
+        </div>
+        <div id="statsGrid" class="stats-grid"></div>
+      </section>
+
+      <section class="card">
+        <div class="table-header">
+          <h2>Recent users</h2>
+          <span id="usersStatus" class="status"></span>
+        </div>
+        <div class="table-wrapper">
+          <table class="table-compact">
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>Email</th>
+                <th>Username</th>
+                <th>Created</th>
+                <th>Last login</th>
+                <th>Banned</th>
+                <th>Action</th>
+              </tr>
+            </thead>
+            <tbody id="usersTable"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="card">
+        <div class="table-header">
+          <h2>Audit logs</h2>
+          <span id="auditStatus" class="status"></span>
+        </div>
+        <div class="table-wrapper">
+          <table class="table-compact">
+            <thead>
+              <tr>
+                <th>When</th>
+                <th>User</th>
+                <th>Action</th>
+                <th>IP</th>
+              </tr>
+            </thead>
+            <tbody id="auditTable"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="card">
         <h2>Create Miner</h2>
         <form id="createForm" class="form-grid">
           <label>

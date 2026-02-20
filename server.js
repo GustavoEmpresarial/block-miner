@@ -22,6 +22,9 @@ const { createCheckinController } = require("./controllers/checkinController");
 const { requireAuth } = require("./middleware/auth");
 const { createRateLimiter } = require("./middleware/rateLimit");
 const { validateBody } = require("./middleware/validate");
+const { createCsrfMiddleware } = require("./middleware/csrf");
+const { createCspMiddleware } = require("./middleware/csp");
+const { requireAdmin } = require("./middleware/admin");
 const { getUserById } = require("./models/userModel");
 const { verifyAccessToken } = require("./utils/authTokens");
 const { getOrCreateMinerProfile } = require("./models/minerProfileModel");
@@ -146,15 +149,20 @@ const localOrigins = (() => {
   return Array.from(origins);
 })();
 
-const allowedOriginSet = new Set([...allowedOrigins, ...localOrigins]);
+const isProd = process.env.NODE_ENV === "production";
+const corsAllowList = allowedOrigins.length > 0 ? allowedOrigins : isProd ? [] : localOrigins;
+const allowedOriginSet = new Set(corsAllowList);
 
 function isOriginAllowed(origin) {
   if (!origin) {
     return true;
   }
 
-  if (allowedOrigins.length === 0) {
-    return true;
+  // If CORS_ORIGINS is not set:
+  // - production: deny all cross-site browser origins by default
+  // - non-production: allow localhost/LAN dev origins
+  if (allowedOrigins.length === 0 && isProd) {
+    return false;
   }
 
   return allowedOriginSet.has(origin);
@@ -175,19 +183,7 @@ app.use(
 );
 app.use(
   helmet({
-    contentSecurityPolicy: {
-      directives: {
-        defaultSrc: ["'self'"],
-        scriptSrc: ["'self'", "https://cdn.jsdelivr.net"],
-        styleSrc: ["'self'", "'unsafe-inline'", "https://cdn.jsdelivr.net"],
-        imgSrc: ["'self'", "data:", "https:"],
-        fontSrc: ["'self'", "https://cdn.jsdelivr.net", "data:"],
-        connectSrc: ["'self'", "https:", "ws:", "wss:"],
-        objectSrc: ["'none'"],
-        baseUri: ["'self'"],
-        frameAncestors: ["'self'"]
-      }
-    },
+    contentSecurityPolicy: false,
     crossOriginEmbedderPolicy: false,
     crossOriginOpenerPolicy: false,
     crossOriginResourcePolicy: { policy: "same-site" },
@@ -210,15 +206,26 @@ if (process.env.NODE_ENV === "production") {
 
 // Additional security headers middleware
 app.use((req, res, next) => {
-  res.setHeader("Strict-Transport-Security", "max-age=31536000; includeSubDomains");
+  // Only send HSTS over HTTPS; otherwise browsers can cache bad policy for localhost/dev.
+  if (req.secure) {
+    res.setHeader("Strict-Transport-Security", "max-age=31536000; includeSubDomains");
+  }
   res.setHeader("X-Frame-Options", "DENY");
   res.setHeader("X-Content-Type-Options", "nosniff");
+  // Note: X-XSS-Protection is deprecated in modern browsers, but harmless for legacy clients.
   res.setHeader("X-XSS-Protection", "1; mode=block");
   res.setHeader("Referrer-Policy", "no-referrer");
   next();
 });
 
 app.use(express.json({ limit: "200kb" }));
+
+// CSP per-route (public vs authenticated pages)
+app.use(createCspMiddleware());
+
+// CSRF protection for cookie-authenticated unsafe requests
+app.use(createCsrfMiddleware());
+
 const blockedPrefixes = ["/controllers", "/models", "/src", "/utils", "/data", "/cron", "/routes"];
 const blockedExtensions = new Set([".js", ".map", ".sql", ".sqlite", ".db", ".env", ".log"]);
 const allowedStaticPrefixes = ["/public", "/admin", "/js", "/css", "/assets", "/includes"];
@@ -279,7 +286,7 @@ app.use(
   })
 );
 app.use("/public", express.static(path.join(__dirname, "public")));
-app.use("/admin", express.static(path.join(__dirname, "admin")));
+app.use("/admin", requireAuth, requireAdmin, express.static(path.join(__dirname, "admin")));
 app.use(pagesRouter);
 
 // Import wallet router
@@ -290,6 +297,7 @@ const swapRouter = require("./routes/swap");
 const ptpRouter = require("./routes/ptp");
 
 const faucetRouter = require("./routes/faucet");
+const faucetpayRouter = require("./routes/faucetpay");
 const ptpController = require("./controllers/ptpController");
 
 // PTP Promo routes
@@ -298,6 +306,7 @@ app.get("/ptp/promote-:userId", ptpController.viewPromotePage);
 app.get("/ptp-r-:userId", ptpController.viewPromotePage);
 
 app.use("/api/auth", authRouter);
+app.use("/api/faucetpay", faucetpayRouter);
 
 const healthController = createHealthController();
 const shopController = createShopController(io);
@@ -376,9 +385,14 @@ app.get("/api/health", healthController.health);
 app.get("/api/shop/miners", requireAuth, shopListLimiter, shopController.listMiners);
 app.post("/api/shop/purchase", requireAuth, shopLimiter, validateBody(purchaseSchema), shopController.purchaseMiner);
 
-app.get("/api/admin/miners", requireAuth, adminLimiter, adminController.listMiners);
-app.post("/api/admin/miners", requireAuth, adminLimiter, adminController.createMiner);
-app.put("/api/admin/miners/:id", requireAuth, adminLimiter, adminController.updateMiner);
+app.get("/api/admin/stats", requireAuth, requireAdmin, adminLimiter, adminController.getStats);
+app.get("/api/admin/users", requireAuth, requireAdmin, adminLimiter, adminController.listRecentUsers);
+app.get("/api/admin/audit", requireAuth, requireAdmin, adminLimiter, adminController.listAuditLogs);
+app.put("/api/admin/users/:id/ban", requireAuth, requireAdmin, adminLimiter, adminController.setUserBan);
+
+app.get("/api/admin/miners", requireAuth, requireAdmin, adminLimiter, adminController.listMiners);
+app.post("/api/admin/miners", requireAuth, requireAdmin, adminLimiter, adminController.createMiner);
+app.put("/api/admin/miners/:id", requireAuth, requireAdmin, adminLimiter, adminController.updateMiner);
 
 app.get("/api/inventory", requireAuth, inventoryLimiter, inventoryController.listInventory);
 app.post(

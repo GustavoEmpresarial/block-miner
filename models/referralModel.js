@@ -32,10 +32,31 @@ async function listReferralEarnings(referrerId, limit = 50) {
   );
 }
 
+async function listReferredUsers(referrerId, limit = 50) {
+  const safeLimit = Math.max(1, Math.min(200, Number(limit) || 50));
+  return all(
+    `
+      SELECT
+        u.id AS id,
+        u.username AS username,
+        u.name AS name,
+        u.created_at AS user_created_at,
+        r.created_at AS referred_at
+      FROM referrals r
+      JOIN users u ON u.id = r.referred_id
+      WHERE r.referrer_id = ?
+      ORDER BY r.created_at DESC
+      LIMIT ?
+    `,
+    [referrerId, safeLimit]
+  );
+}
+
 module.exports = {
   getUserByRefCode,
   createReferral,
   getReferralByReferredId,
   addReferralEarning,
-  listReferralEarnings
+  listReferralEarnings,
+  listReferredUsers
 };

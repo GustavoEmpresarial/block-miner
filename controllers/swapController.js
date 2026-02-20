@@ -1,6 +1,7 @@
 const https = require("https");
 const { run, get } = require("../models/db");
 const { createAuditLog } = require("../models/auditLogModel");
+const { getAnonymizedRequestIp } = require("../utils/clientIp");
 
 const PRICE_TTL_MS = 2 * 60 * 1000;
 const priceCache = new Map();
@@ -231,7 +232,7 @@ async function executeSwap(req, res) {
       await createAuditLog({
         userId,
         action: "swap",
-        ip: req.ip,
+        ip: getAnonymizedRequestIp(req),
         userAgent: req.get("user-agent"),
         details: { fromAsset: swap.from, toAsset: swap.to, amount: amountNum, output, rate }
       });

@@ -9,7 +9,23 @@ services:
       NODE_ENV: production
       PORT: 3000
       DB_PATH: /app/data/blockminer.db
+      BACKUP_DIR: /app/backups
+      BACKUP_RETENTION_DAYS: 7
+      BACKUP_INTERVAL_HOURS: 24
     volumes:
       - ./data:/app/data
+      - ./backups:/app/backups
+    restart: unless-stopped
+
+  nginx:
+    image: nginx:1.27-alpine
+    depends_on:
+      - app
+    ports:
+      - "127.0.0.1:80:80"
+      - "127.0.0.1:443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/certs:/etc/nginx/certs:ro
     restart: unless-stopped
 

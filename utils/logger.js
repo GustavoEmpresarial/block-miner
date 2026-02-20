@@ -27,7 +27,27 @@ const COLORS = {
 class Logger {
   constructor(module = "App") {
     this.module = module;
-    this.logLevel = process.env.LOG_LEVEL || "INFO";
+    this.logLevel = String(process.env.LOG_LEVEL || "INFO").trim().toUpperCase();
+  }
+
+  _levelValue(level) {
+    const normalized = String(level || "INFO").trim().toUpperCase();
+    switch (normalized) {
+      case LOG_LEVELS.ERROR:
+        return 40;
+      case LOG_LEVELS.WARN:
+        return 30;
+      case LOG_LEVELS.INFO:
+        return 20;
+      case LOG_LEVELS.DEBUG:
+        return 10;
+      default:
+        return 20;
+    }
+  }
+
+  _shouldLog(level) {
+    return this._levelValue(level) >= this._levelValue(this.logLevel);
   }
 
   /**
@@ -57,25 +77,31 @@ class Logger {
    * Write to console
    */
   _writeToConsole(level, message, data) {
+    if (!this._shouldLog(level)) {
+      return;
+    }
+
     const color = COLORS[level] || COLORS.INFO;
     const reset = COLORS.RESET;
     const content = this._formatMessage(level, message, data);
     
-    // In production, use console only if LOG_LEVEL allows
     if (process.env.NODE_ENV === "production") {
       if (level === LOG_LEVELS.ERROR) console.error(content);
       else if (level === LOG_LEVELS.WARN) console.warn(content);
-      else if (level === LOG_LEVELS.INFO) console.log(content);
-      // DEBUG is suppressed in production
-    } else {
-      console.log(`${color}${content}${reset}`);
+      else console.log(content);
+      return;
     }
+
+    console.log(`${color}${content}${reset}`);
   }
 
   /**
    * Generic log method
    */
   _log(level, message, data = {}) {
+    if (!this._shouldLog(level)) {
+      return;
+    }
     this._writeToConsole(level, message, data);
     this._writeToFile(level, message, data);
   }
@@ -105,9 +131,7 @@ class Logger {
    * Log debug (only in development)
    */
   debug(message, data = {}) {
-    if (process.env.NODE_ENV !== "production") {
-      this._log(LOG_LEVELS.DEBUG, message, data);
-    }
+    this._log(LOG_LEVELS.DEBUG, message, data);
   }
 
   /**

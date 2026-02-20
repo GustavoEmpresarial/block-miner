@@ -89,6 +89,48 @@
   margin-bottom: 0.4rem;
 }
 
+.referral-invited {
+  background: rgba(19, 26, 42, 0.85);
+}
+
+.invited-list {
+  margin-top: 1rem;
+  display: grid;
+  gap: 0.75rem;
+}
+
+.invited-item {
+  background: rgba(10, 16, 30, 0.65);
+  border: 1px solid rgba(109, 131, 179, 0.3);
+  border-radius: 10px;
+  padding: 0.9rem 1rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.invited-name {
+  font-weight: 700;
+  color: #deebff;
+}
+
+.invited-meta {
+  display: flex;
+  gap: 0.85rem;
+  flex-wrap: wrap;
+  color: #9ab4d8;
+  font-size: 0.9rem;
+}
+
+.invited-empty {
+  padding: 0.9rem 1rem;
+  border-radius: 10px;
+  background: rgba(10, 16, 30, 0.45);
+  border: 1px dashed rgba(109, 131, 179, 0.28);
+  color: #9ab4d8;
+}
+
 @media (max-width: 720px) {
   .referral-row {
     align-items: flex-start;

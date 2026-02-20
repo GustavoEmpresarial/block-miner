@@ -252,6 +252,12 @@ hr {
   margin-bottom: 1rem;
 }
 
+/* Slightly tighter FaucetPay status in Settings */
+.settings-section .status-indicator {
+  padding: 0.85rem 1rem;
+  font-size: 0.98rem;
+}
+
 .settings-section .faucetpay-form,
 .settings-section .withdrawal-form {
   margin-top: 1rem;
@@ -259,13 +265,13 @@ hr {
 
 /* Increase email display size */
 .settings-section .faucetpay-info {
-  padding: 1.8rem !important;
-  margin: 1.5rem 0 !important;
+  padding: 1.05rem 1.15rem !important;
+  margin: 0.9rem 0 1rem 0 !important;
 }
 
 .settings-section .faucetpay-info p {
-  font-size: 1.15rem !important;
-  margin: 1rem 0 !important;
+  font-size: 1.05rem !important;
+  margin: 0.55rem 0 !important;
 }
 
 .settings-section .faucetpay-info p strong {
@@ -274,9 +280,10 @@ hr {
 }
 
 .settings-section .faucetpay-info p span {
-  font-size: 1.2rem !important;
-  font-weight: 600;
+  font-size: 1.45rem !important;
+  font-weight: 800;
   color: #7fd6a7;
+  word-break: break-word;
 }
 
 /* Reduce unlink button size */

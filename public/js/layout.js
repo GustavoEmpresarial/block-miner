@@ -1,4 +1,47 @@
 (function initLayout() {
+  const getCookie = (name) => {
+    const cookieString = document.cookie || "";
+    const parts = cookieString.split(";").map((part) => part.trim());
+    for (const part of parts) {
+      if (!part) continue;
+      const eqIndex = part.indexOf("=");
+      if (eqIndex === -1) continue;
+      const key = part.slice(0, eqIndex);
+      if (key !== name) continue;
+      return decodeURIComponent(part.slice(eqIndex + 1));
+    }
+    return null;
+  };
+
+  const isUnsafeMethod = (method) => {
+    const m = String(method || "GET").toUpperCase();
+    return m !== "GET" && m !== "HEAD" && m !== "OPTIONS";
+  };
+
+  // Add CSRF header automatically for cookie-authenticated unsafe requests.
+  // The server enforces CSRF only when Authorization: Bearer is NOT present.
+  const originalFetch = window.fetch.bind(window);
+  window.fetch = async (input, init = {}) => {
+    try {
+      const url = typeof input === "string" ? input : input?.url;
+      const isSameOrigin = !url || url.startsWith("/") || url.startsWith(window.location.origin);
+      const method = init?.method || (typeof input !== "string" ? input?.method : "GET") || "GET";
+      const headers = new Headers(init?.headers || (typeof input !== "string" ? input?.headers : undefined) || {});
+      const hasAuth = headers.has("Authorization") || headers.has("authorization");
+
+      if (isSameOrigin && isUnsafeMethod(method) && !hasAuth) {
+        const csrf = getCookie("blockminer_csrf");
+        if (csrf) {
+          headers.set("X-CSRF-Token", csrf);
+        }
+      }
+
+      return originalFetch(input, { ...init, headers });
+    } catch {
+      return originalFetch(input, init);
+    }
+  };
+
   const ensureToastContainer = () => {
     let container = document.querySelector(".app-toasts");
     if (!container) {

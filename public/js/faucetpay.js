@@ -16,7 +16,15 @@ const faucetpayElements = {
   get withdrawBtn() { return document.getElementById("faucetpayWithdrawBtn"); }
 };
 
-console.log("[FaucetPay] Module with lazy element getters loaded");
+const FAUCETPAY_DEBUG = localStorage.getItem("blockminer_debug") === "1";
+function debugLog(...args) {
+  if (FAUCETPAY_DEBUG) console.log(...args);
+}
+function debugError(...args) {
+  if (FAUCETPAY_DEBUG) console.error(...args);
+}
+
+debugLog("[FaucetPay] Module with lazy element getters loaded");
 
 let faucetpayState = {
   isLinked: false,
@@ -50,7 +58,7 @@ async function checkFaucetPayLink() {
       updateFaucetPayUI();
     }
   } catch (error) {
-    console.error("Error checking FaucetPay link:", error);
+    debugError("Error checking FaucetPay link:", error);
   }
 }
 
@@ -68,34 +76,34 @@ function updateFaucetPayUI() {
 
 // Link FaucetPay account with email only
 async function linkFaucetPayManual(event) {
-  console.log("[FaucetPay] 🚀 linkFaucetPayManual CALLED!", event);
+  debugLog("[FaucetPay] 🚀 linkFaucetPayManual CALLED!", event);
   
   event.preventDefault();
   event.stopPropagation();
   event.stopImmediatePropagation();
   
-  console.log("[FaucetPay] Event prevented, checking isProcessing:", faucetpayState.isProcessing);
+  debugLog("[FaucetPay] Event prevented, checking isProcessing:", faucetpayState.isProcessing);
   
   // Prevent multiple submissions
   if (faucetpayState.isProcessing) {
-    console.log("[FaucetPay] Already processing, returning false");
+    debugLog("[FaucetPay] Already processing, returning false");
     return false;
   }
   
   faucetpayState.isProcessing = true;
-  console.log("[FaucetPay] isProcessing set to true, proceeding...");
+  debugLog("[FaucetPay] isProcessing set to true, proceeding...");
 
   const emailInput = document.getElementById("faucetpayEmail");
-  console.log("[FaucetPay] emailInput element:", emailInput);
+  debugLog("[FaucetPay] emailInput element:", emailInput);
   
   const email = emailInput?.value?.trim();
-  console.log("[FaucetPay] Email value:", email);
+  debugLog("[FaucetPay] Email value:", email);
   
   const token = getToken();
-  console.log("[FaucetPay] Token:", token ? "EXISTS" : "NOT FOUND");
+  debugLog("[FaucetPay] Token:", token ? "EXISTS" : "NOT FOUND");
 
   if (!email) {
-    console.log("[FaucetPay] ❌ No email entered");
+    debugLog("[FaucetPay] ❌ No email entered");
     window.notify?.("Please enter your FaucetPay email", "error");
     faucetpayState.isProcessing = false;
     return false;
@@ -103,18 +111,18 @@ async function linkFaucetPayManual(event) {
 
   // Basic email validation
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-    console.log("[FaucetPay] ❌ Invalid email format");
+    debugLog("[FaucetPay] ❌ Invalid email format");
     window.notify?.("Please enter a valid email address", "error");
     faucetpayState.isProcessing = false;
     return false;
   }
   
-  console.log("[FaucetPay] ✅ Email valid, making API call...");
+  debugLog("[FaucetPay] ✅ Email valid, making API call...");
 
   try {
-    console.log("[FaucetPay] Sending POST to /api/faucetpay/link");
-    console.log("[FaucetPay] Request body:", { faucetPayEmail: email });
-    console.log("[FaucetPay] Authorization header:", token ? "Bearer " + token.substring(0, 20) + "..." : "MISSING");
+    debugLog("[FaucetPay] Sending POST to /api/faucetpay/link");
+    debugLog("[FaucetPay] Request body:", { faucetPayEmail: email });
+    debugLog("[FaucetPay] Authorization header:", token ? "Bearer " + token.substring(0, 20) + "..." : "MISSING");
     
     const response = await fetch("/api/faucetpay/link", {
       method: "POST",
@@ -127,40 +135,40 @@ async function linkFaucetPayManual(event) {
       })
     });
 
-    console.log("[FaucetPay] Response received, status:", response.status);
-    console.log("[FaucetPay] Response headers:", response.headers);
+    debugLog("[FaucetPay] Response received, status:", response.status);
+    debugLog("[FaucetPay] Response headers:", response.headers);
     
     const data = await response.json();
-    console.log("[FaucetPay] Response data:", data);
+    debugLog("[FaucetPay] Response data:", data);
     
     if (data.ok) {
-      console.log("[FaucetPay] ✅ Account linked successfully!");
+      debugLog("[FaucetPay] ✅ Account linked successfully!");
       window.notify?.("FaucetPay account linked successfully!", "success");
       await checkFaucetPayLink();
       const form = document.getElementById("faucetpayManualForm");
       if (form) {
         form.reset();
-        console.log("[FaucetPay] Form reset");
+        debugLog("[FaucetPay] Form reset");
       }
     } else {
-      console.log("[FaucetPay] ❌ Link failed:", data.message);
+      debugLog("[FaucetPay] ❌ Link failed:", data.message);
       window.notify?.(data.message || "Failed to link account", "error");
     }
   } catch (error) {
-    console.error("[FaucetPay] ❌ Error linking FaucetPay:", error);
-    console.error("[FaucetPay] Error type:", error.constructor.name);
-    console.error("[FaucetPay] Error message:", error.message);
-    console.error("[FaucetPay] Error stack:", error.stack);
+    debugError("[FaucetPay] ❌ Error linking FaucetPay:", error);
+    debugError("[FaucetPay] Error type:", error?.constructor?.name);
+    debugError("[FaucetPay] Error message:", error?.message);
+    debugError("[FaucetPay] Error stack:", error?.stack);
     
-    if (error.name === 'TypeError') {
-      console.error("[FaucetPay] 🔴 Network error - server might be down or CORS issue");
+    if (error?.name === "TypeError") {
+      debugError("[FaucetPay] 🔴 Network error - server might be down or CORS issue");
       window.notify?.("Network error - please check if server is running", "error");
     } else {
       window.notify?.("Failed to link account", "error");
     }
   } finally {
     faucetpayState.isProcessing = false;
-    console.log("[FaucetPay] isProcessing reset to false");
+    debugLog("[FaucetPay] isProcessing reset to false");
   }
   
   return false;
@@ -227,7 +235,7 @@ async function withdrawFaucetPay(event) {
       window.notify?.(data.message || "Withdrawal failed", "error");
     }
   } catch (error) {
-    console.error("Error withdrawing from FaucetPay:", error);
+    debugError("Error withdrawing from FaucetPay:", error);
     window.notify?.("Failed to process withdrawal", "error");
   } finally {
     faucetpayElements.withdrawBtn.disabled = false;
@@ -263,7 +271,7 @@ async function unlinkFaucetPay() {
       window.notify?.(data.message || "Failed to unlink", "error");
     }
   } catch (error) {
-    console.error("Error unlinking FaucetPay:", error);
+    debugError("Error unlinking FaucetPay:", error);
     window.notify?.("Failed to unlink account", "error");
   }
 }
@@ -272,11 +280,11 @@ async function unlinkFaucetPay() {
 let listenersAttached = false;
 
 function setupFaucetPayListeners() {
-  console.log("[FaucetPay] setupFaucetPayListeners called, listenersAttached:", listenersAttached);
+  debugLog("[FaucetPay] setupFaucetPayListeners called, listenersAttached:", listenersAttached);
   
   // Prevent attaching listeners multiple times
   if (listenersAttached) {
-    console.log("[FaucetPay] Listeners already attached, skipping");
+    debugLog("[FaucetPay] Listeners already attached, skipping");
     return;
   }
   
@@ -285,46 +293,46 @@ function setupFaucetPayListeners() {
   const unlinkBtn = document.getElementById("unlinkFaucetPayBtn");
   const amountInput = document.getElementById("faucetpayAmount");
   
-  console.log("[FaucetPay] Element check:");
-  console.log("  - manualForm:", manualForm ? "FOUND" : "NOT FOUND", manualForm);
-  console.log("  - withdrawForm:", withdrawForm ? "FOUND" : "NOT FOUND");
-  console.log("  - unlinkBtn:", unlinkBtn ? "FOUND" : "NOT FOUND");
-  console.log("  - amountInput:", amountInput ? "FOUND" : "NOT FOUND");
+  debugLog("[FaucetPay] Element check:");
+  debugLog("  - manualForm:", manualForm ? "FOUND" : "NOT FOUND", manualForm);
+  debugLog("  - withdrawForm:", withdrawForm ? "FOUND" : "NOT FOUND");
+  debugLog("  - unlinkBtn:", unlinkBtn ? "FOUND" : "NOT FOUND");
+  debugLog("  - amountInput:", amountInput ? "FOUND" : "NOT FOUND");
   
   if (unlinkBtn) {
     unlinkBtn.addEventListener("click", unlinkFaucetPay);
-    console.log("[FaucetPay] ✅ unlinkBtn listener attached");
+    debugLog("[FaucetPay] ✅ unlinkBtn listener attached");
   }
   
   if (manualForm) {
     // Attach listener directly to ensure proper event handling
     manualForm.addEventListener("submit", linkFaucetPayManual);
-    console.log("[FaucetPay] ✅ manualForm listener attached");
+    debugLog("[FaucetPay] ✅ manualForm listener attached");
   } else {
-    console.error("[FaucetPay] ❌ manualForm NOT FOUND - cannot attach listener!");
+    debugError("[FaucetPay] ❌ manualForm NOT FOUND - cannot attach listener!");
   }
   
   if (withdrawForm) {
     withdrawForm.addEventListener("submit", withdrawFaucetPay);
-    console.log("[FaucetPay] ✅ withdrawForm listener attached");
+    debugLog("[FaucetPay] ✅ withdrawForm listener attached");
   }
   
   if (amountInput) {
     amountInput.addEventListener("input", updateFaucetPaySummary);
-    console.log("[FaucetPay] ✅ amountInput listener attached");
+    debugLog("[FaucetPay] ✅ amountInput listener attached");
   }
   
   listenersAttached = true;
-  console.log("[FaucetPay] All listeners setup complete!");
+  debugLog("[FaucetPay] All listeners setup complete!");
 }
 
 // Initialize FaucetPay section
 async function initFaucetPay() {
-  console.log("[FaucetPay] 🚀 initFaucetPay called");
+  debugLog("[FaucetPay] 🚀 initFaucetPay called");
   setupFaucetPayListeners();
   await checkFaucetPayLink();
   updateFaucetPayUI();
-  console.log("[FaucetPay] ✅ Initialization complete");
+  debugLog("[FaucetPay] ✅ Initialization complete");
 }
 
 // Export for wallet.js
