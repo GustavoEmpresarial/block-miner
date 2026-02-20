@@ -358,6 +358,43 @@ body.with-layout main {
   }
 }
 
+/* Mobile touch target improvements & responsive adjustments */
+@media (max-width: 768px) {
+  .nav-link {
+    min-height: 48px;
+    display: inline-flex;
+    align-items: center;
+    padding: 0.6rem 0.9rem;
+  }
+
+  .app-toasts {
+    right: 0.5rem;
+    bottom: 1rem;
+    top: auto;
+    max-width: calc(100vw - 1rem);
+  }
+
+  .toast {
+    max-width: 100%;
+    min-width: min(280px, calc(100vw - 1.5rem));
+  }
+
+  .side-links a {
+    min-height: 48px;
+    padding: 0.65rem 0.8rem;
+  }
+}
+
+@media (max-width: 640px) {
+  body.with-layout main {
+    padding: 0.8rem 0.7rem 1.2rem;
+  }
+
+  .side-section-title {
+    font-size: 0.75rem;
+  }
+}
+
 /* General spacing improvements for sections */
 main section:not(:first-child) {
   margin-top: 2rem;

@@ -155,3 +155,69 @@ a {
     font-size: 1rem;
   }
 }
+
+/* Enhanced mobile responsiveness */
+@media (max-width: 768px) {
+  input,
+  .btn {
+    min-height: 56px;
+    touch-action: manipulation;
+  }
+
+  input {
+    font-size: 16px; /* Prevents zoom on iOS */
+    padding: 1rem 1.2rem;
+    border-radius: 12px;
+  }
+
+  .btn {
+    padding: 1rem 1.2rem;
+    border-radius: 12px;
+  }
+
+  .card {
+    border-radius: 16px;
+    padding: clamp(1.4rem, 6vw, 2rem);
+  }
+
+  label {
+    font-size: 1rem;
+  }
+
+  p {
+    font-size: 1rem;
+  }
+
+  .feedback {
+    font-size: 1rem;
+  }
+}
+
+@media (max-width: 480px) {
+  .auth-page {
+    width: 100%;
+  }
+
+  .card {
+    border-radius: 14px;
+    padding: 1.2rem;
+  }
+
+  h1 {
+    font-size: 1.8rem;
+  }
+
+  .form {
+    gap: 0.7rem;
+  }
+
+  .links {
+    gap: 0.6rem;
+  }
+
+  a {
+    min-height: 48px;
+    padding: 0.8rem 0.9rem;
+    font-size: 0.95rem;
+  }
+}
