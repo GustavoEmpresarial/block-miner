@@ -297,7 +297,6 @@ const swapRouter = require("./routes/swap");
 const ptpRouter = require("./routes/ptp");
 
 const faucetRouter = require("./routes/faucet");
-const faucetpayRouter = require("./routes/faucetpay");
 const ptpController = require("./controllers/ptpController");
 
 // PTP Promo routes
@@ -306,7 +305,6 @@ app.get("/ptp/promote-:userId", ptpController.viewPromotePage);
 app.get("/ptp-r-:userId", ptpController.viewPromotePage);
 
 app.use("/api/auth", authRouter);
-app.use("/api/faucetpay", faucetpayRouter);
 
 const healthController = createHealthController();
 const shopController = createShopController(io);

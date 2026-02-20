@@ -90,7 +90,6 @@ function createAdminController() {
         balances,
         tx24h,
         referralsTotal,
-        faucetpayLinked,
         audit24h
       ] = await Promise.all([
         get("SELECT COUNT(*) AS count FROM users"),
@@ -107,7 +106,6 @@ function createAdminController() {
           [dayAgo]
         ),
         get("SELECT COUNT(*) AS count FROM referrals"),
-        get("SELECT COUNT(*) AS count FROM faucetpay_accounts"),
         get("SELECT COUNT(*) AS count FROM audit_logs WHERE created_at >= ?", [dayAgo])
       ]);
 
@@ -130,7 +128,6 @@ function createAdminController() {
           totalWithdrawn: Number(balances?.withdrawn || 0),
           transactions24h: Number(tx24h?.count || 0),
           referralsTotal: Number(referralsTotal?.count || 0),
-          faucetpayLinked: Number(faucetpayLinked?.count || 0),
           auditEvents24h: Number(audit24h?.count || 0),
           lockouts7d: Number(lockoutsWeek?.count || 0)
         }

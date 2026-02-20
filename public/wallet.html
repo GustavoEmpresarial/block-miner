@@ -136,71 +136,57 @@
       </div>
     </section>
 
-    <!-- FaucetPay Withdrawal Notice -->
-    <section class="card faucetpay-card">
-      <h2>💳 FaucetPay - Fast & Easy Withdrawals</h2>
-      <p>Withdraw your earnings instantly via FaucetPay without paying network fees</p>
-      
-      <div id="faucetpayNotLinked" class="faucetpay-status">
-        <div class="status-indicator disconnected">
-          <i class="bi bi-link-45deg"></i>
-          <span>Not Connected to FaucetPay</span>
-        </div>
-        <p class="status-hint">⚙️ Go to Settings to connect your FaucetPay account and enable withdrawals</p>
-        
-        <a href="/settings" class="btn btn-primary btn-block">
-          <i class="bi bi-gear"></i> Go to Settings
-        </a>
-      </div>
+    <!-- On-chain Withdrawal -->
+    <section class="card withdraw-card">
+      <h2>🚀 Withdraw POL (On-chain)</h2>
+      <p>Send POL to your wallet address. Network fees are paid by the pool.</p>
 
-      <div id="faucetpayLinked" class="faucetpay-status" style="display: none;">
-        <div class="status-indicator connected">
-          <i class="bi bi-check-circle"></i>
-          <span>Connected to FaucetPay</span>
-        </div>
-        <div class="faucetpay-info">
-          <p><strong>Email:</strong> <span id="faucetpayLinkedEmail">loading...</span></p>
+      <form id="withdrawForm" class="withdrawal-form">
+        <div class="form-group">
+          <label for="withdrawAddress">Destination Wallet Address</label>
+          <input
+            type="text"
+            id="withdrawAddress"
+            class="form-control"
+            placeholder="0x..."
+            autocomplete="off"
+            required
+          />
         </div>
 
-        <form id="faucetpayWithdrawForm" class="withdrawal-form">
-          <div class="form-group">
-            <label for="faucetpayAmount">Amount to Withdraw</label>
-            <input
-              type="text"
-              id="faucetpayAmount"
-              class="form-control"
-              placeholder="0.000000"
-              inputmode="decimal"
-              autocomplete="off"
-              required
-            />
-            <small class="form-hint">No network fees - transferred instantly to your FaucetPay account</small>
+        <div class="form-group">
+          <label for="withdrawAmount">Amount to Withdraw (POL)</label>
+          <input
+            type="text"
+            id="withdrawAmount"
+            class="form-control"
+            placeholder="0.000000"
+            inputmode="decimal"
+            autocomplete="off"
+            required
+          />
+          <small class="form-hint">Minimum: 0.1 POL</small>
+        </div>
+
+        <div class="withdraw-summary">
+          <div class="summary-row">
+            <span class="summary-label">Amount:</span>
+            <span id="withdrawSummaryAmount" class="summary-value">0.000000 POL</span>
           </div>
-
-          <div class="faucetpay-summary">
-            <div class="summary-row">
-              <span class="summary-label">Amount:</span>
-              <span id="faucetpaySummaryAmount" class="summary-value">0.000000</span>
-            </div>
-            <div class="summary-row">
-              <span class="summary-label">Network Fee:</span>
-              <span class="summary-value" style="color: #4ade80;">FREE</span>
-            </div>
-            <div class="summary-row total">
-              <span class="summary-label">You will receive:</span>
-              <span id="faucetpaySummaryTotal" class="summary-value">0.000000</span>
-            </div>
+          <div class="summary-row">
+            <span class="summary-label">Network Fee:</span>
+            <span class="summary-value" style="color: #4ade80;">Paid by pool</span>
           </div>
+          <div class="summary-row total">
+            <span class="summary-label">You will receive:</span>
+            <span id="withdrawSummaryTotal" class="summary-value">0.000000 POL</span>
+          </div>
+        </div>
 
-          <button type="submit" id="faucetpayWithdrawBtn" class="btn btn-success btn-block">
-            <i class="bi bi-arrow-down-circle"></i> Withdraw via FaucetPay
-          </button>
-        </form>
-
-        <a href="/settings" class="btn btn-outline-secondary faucetpay-manage-link">
-          <i class="bi bi-gear"></i> Manage FaucetPay Connection
-        </a>
-      </div>
+        <button type="submit" id="withdrawSubmitBtn" class="btn btn-success btn-block">
+          <i class="bi bi-arrow-down-circle"></i> Withdraw to Wallet
+        </button>
+      </form>
     </section>
 
     <!-- Transaction History Card -->
@@ -223,6 +209,5 @@
 
   <script src="/js/layout.js"></script>
   <script src="/js/wallet.js"></script>
-  <script src="/js/faucetpay.js"></script>
 </body>
 </html>

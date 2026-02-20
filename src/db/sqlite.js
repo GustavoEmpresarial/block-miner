@@ -700,46 +700,6 @@ async function initializeDatabase() {
     CREATE INDEX IF NOT EXISTS idx_deposits_status ON deposits(status)
   `);
 
-  // FaucetPay integration tables
-  await run(`
-    CREATE TABLE IF NOT EXISTS faucetpay_accounts (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      user_id INTEGER NOT NULL UNIQUE,
-      faucetpay_user_id TEXT NOT NULL,
-      faucetpay_email TEXT NOT NULL,
-      linked_at TEXT NOT NULL,
-      FOREIGN KEY (user_id) REFERENCES users(id),
-      UNIQUE(faucetpay_user_id)
-    )
-  `);
-
-  await run(`
-    CREATE INDEX IF NOT EXISTS idx_faucetpay_accounts_user_id ON faucetpay_accounts(user_id)
-  `);
-
-  await run(`
-    CREATE TABLE IF NOT EXISTS faucetpay_withdrawals (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      user_id INTEGER NOT NULL,
-      amount REAL NOT NULL,
-      faucetpay_user_id TEXT NOT NULL,
-      status TEXT NOT NULL DEFAULT 'pending',
-      api_response TEXT,
-      created_at TEXT NOT NULL,
-      updated_at TEXT,
-      FOREIGN KEY (user_id) REFERENCES users(id),
-      FOREIGN KEY (faucetpay_user_id) REFERENCES faucetpay_accounts(faucetpay_user_id)
-    )
-  `);
-
-  await run(`
-    CREATE INDEX IF NOT EXISTS idx_faucetpay_withdrawals_user_id ON faucetpay_withdrawals(user_id)
-  `);
-
-  await run(`
-    CREATE INDEX IF NOT EXISTS idx_faucetpay_withdrawals_status ON faucetpay_withdrawals(status)
-  `);
-
   // Add total_withdrawn column to users_temp_power if it doesn't exist
   try {
     await run("ALTER TABLE users_temp_power ADD COLUMN total_withdrawn REAL NOT NULL DEFAULT 0");

@@ -100,7 +100,6 @@ function renderStats(stats) {
     ["Total withdrawn", formatNumber(stats.totalWithdrawn, 6)],
     ["Transactions (24h)", stats.transactions24h],
     ["Referrals", stats.referralsTotal],
-    ["FaucetPay linked", stats.faucetpayLinked],
     ["Audit events (24h)", stats.auditEvents24h],
     ["Lockouts (7d)", stats.lockouts7d]
   ];

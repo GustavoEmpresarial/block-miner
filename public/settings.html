@@ -18,53 +18,6 @@
     <section class="settings-card">
       <h1><i class="bi bi-gear"></i> Settings</h1>
       
-      <!-- FaucetPay Configuration Section -->
-      <div class="settings-section">
-        <h2>💳 FaucetPay Integration</h2>
-        <p class="section-description">Connect your FaucetPay account to enable instant, fee-free withdrawals</p>
-        
-        <div id="faucetpayNotLinked" class="faucetpay-status">
-          <div class="status-indicator disconnected">
-            <i class="bi bi-link-45deg"></i>
-            <span>Not Connected to FaucetPay</span>
-          </div>
-          <p class="status-hint">Enter your FaucetPay email to enable quick withdrawals</p>
-          
-          <form id="faucetpayManualForm" class="faucetpay-form">
-            <div class="form-group">
-              <label for="faucetpayEmail">FaucetPay Email</label>
-              <input 
-                type="email" 
-                id="faucetpayEmail" 
-                class="form-control" 
-                placeholder="your@email.com" 
-                required 
-              />
-              <small class="form-hint">Use the same email registered on FaucetPay.io</small>
-            </div>
-            <button type="submit" class="btn btn-primary btn-block">
-              <i class="bi bi-link-45deg"></i> Connect FaucetPay Account
-            </button>
-          </form>
-        </div>
-
-        <div id="faucetpayLinked" class="faucetpay-status" style="display: none;">
-          <div class="status-indicator connected">
-            <i class="bi bi-check-circle"></i>
-            <span>Connected to FaucetPay</span>
-          </div>
-          <div class="faucetpay-info">
-            <p><strong>Email:</strong> <span id="faucetpayLinkedEmail">loading...</span></p>
-          </div>
-
-          <button id="unlinkFaucetPayBtn" class="btn btn-outline-danger">
-            <i class="bi bi-x-lg"></i> Unlink Account
-          </button>
-        </div>
-      </div>
-
-      <hr />
-
       <!-- Account Settings -->
       <div class="settings-section">
         <h2><i class="bi bi-person"></i> Account Settings</h2>
@@ -93,20 +46,5 @@
   </main>
   
   <script src="/js/layout.js"></script>
-  <script src="/js/faucetpay.js"></script>
-  <script>
-    // Initialize FaucetPay on settings page
-    if (document.readyState === "loading") {
-      document.addEventListener("DOMContentLoaded", () => {
-        if (window.initFaucetPay) {
-          window.initFaucetPay();
-        }
-      });
-    } else {
-      if (window.initFaucetPay) {
-        window.initFaucetPay();
-      }
-    }
-  </script>
 </body>
 </html>

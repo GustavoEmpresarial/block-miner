@@ -24,6 +24,14 @@ const elements = {
   get quickDepositBtn() { return document.getElementById("quickDepositBtn"); },
   get pendingDepositsSection() { return document.getElementById("pendingDepositsSection"); },
   get pendingDepositsList() { return document.getElementById("pendingDepositsList"); },
+
+  // Withdrawal elements
+  get withdrawForm() { return document.getElementById("withdrawForm"); },
+  get withdrawAddress() { return document.getElementById("withdrawAddress"); },
+  get withdrawAmount() { return document.getElementById("withdrawAmount"); },
+  get withdrawSummaryAmount() { return document.getElementById("withdrawSummaryAmount"); },
+  get withdrawSummaryTotal() { return document.getElementById("withdrawSummaryTotal"); },
+  get withdrawSubmitBtn() { return document.getElementById("withdrawSubmitBtn"); },
   
   get transactionList() { return document.getElementById("transactionList"); },
   get refreshBalanceBtn() { return document.getElementById("refreshBalanceBtn"); },
@@ -386,10 +394,88 @@ function updateBalanceUI() {
   elements.balanceAmount.textContent = formatNumber(state.balance);
   elements.lifetimeMined.textContent = `${formatNumber(state.lifetimeMined)} POL`;
   elements.totalWithdrawn.textContent = `${formatNumber(state.totalWithdrawn)} POL`;
-  
-  // Update FaucetPay balance if available
-  if (window.updateFaucetPayState) {
-    window.updateFaucetPayState(state.balance);
+}
+
+function updateWithdrawSummary() {
+  if (!elements.withdrawAmount || !elements.withdrawSummaryAmount || !elements.withdrawSummaryTotal) {
+    return;
+  }
+
+  const amount = parseFloat(elements.withdrawAmount.value) || 0;
+  elements.withdrawSummaryAmount.textContent = `${formatNumber(amount)} POL`;
+  elements.withdrawSummaryTotal.textContent = `${formatNumber(amount)} POL`;
+
+  if (elements.withdrawSubmitBtn) {
+    const hasAddress = Boolean(elements.withdrawAddress?.value?.trim());
+    elements.withdrawSubmitBtn.disabled = !(amount > 0 && hasAddress);
+  }
+}
+
+async function handleWithdraw(event) {
+  event.preventDefault();
+
+  const token = getToken();
+  if (!token) return;
+
+  const address = elements.withdrawAddress?.value?.trim();
+  const amountRaw = elements.withdrawAmount?.value?.trim();
+  const amount = parseFloat(amountRaw);
+
+  if (!address) {
+    window.notify?.("Please enter a destination address", "error");
+    return;
+  }
+
+  if (!Number.isFinite(amount) || amount <= 0) {
+    window.notify?.("Enter a valid amount", "error");
+    return;
+  }
+
+  if (amount < 0.1) {
+    window.notify?.("Minimum withdrawal amount is 0.1 POL", "error");
+    return;
+  }
+
+  if (amount > state.balance) {
+    window.notify?.("Insufficient balance", "error");
+    return;
+  }
+
+  if (elements.withdrawSubmitBtn) {
+    elements.withdrawSubmitBtn.disabled = true;
+    elements.withdrawSubmitBtn.innerHTML = '<i class="bi bi-hourglass-split"></i> Processing...';
+  }
+
+  try {
+    const response = await fetch("/api/wallet/withdraw", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`
+      },
+      body: JSON.stringify({ amount, address })
+    });
+
+    const data = await response.json();
+    if (data.ok) {
+      window.notify?.(data.message || "Withdrawal requested successfully", "success");
+      if (elements.withdrawAmount) {
+        elements.withdrawAmount.value = "";
+      }
+      updateWithdrawSummary();
+      await loadBalance();
+      await loadTransactionHistory();
+    } else {
+      window.notify?.(data.message || "Withdrawal failed", "error");
+    }
+  } catch (error) {
+    console.error("Error processing withdrawal:", error);
+    window.notify?.("Failed to process withdrawal", "error");
+  } finally {
+    if (elements.withdrawSubmitBtn) {
+      elements.withdrawSubmitBtn.disabled = false;
+      elements.withdrawSubmitBtn.innerHTML = '<i class="bi bi-arrow-down-circle"></i> Withdraw to Wallet';
+    }
   }
 }
 
@@ -533,6 +619,18 @@ function setupEventListeners() {
     depositAmount.addEventListener("input", updateDepositSummary);
   }
 
+  if (elements.withdrawAmount) {
+    elements.withdrawAmount.addEventListener("input", updateWithdrawSummary);
+  }
+
+  if (elements.withdrawAddress) {
+    elements.withdrawAddress.addEventListener("input", updateWithdrawSummary);
+  }
+
+  if (elements.withdrawForm) {
+    elements.withdrawForm.addEventListener("submit", handleWithdraw);
+  }
+
   walletListenersAttached = true;
 
   // Listen for wallet account changes
@@ -559,18 +657,7 @@ async function init() {
   await loadDepositAddress();
   await loadTransactionHistory();
   
-  // Initialize FaucetPay after wallet loads
-  requestAnimationFrame(() => {
-    setTimeout(async () => {
-      if (window.initFaucetPay) {
-        try {
-          await window.initFaucetPay();
-        } catch (error) {
-          console.error("[Wallet] Error initializing FaucetPay:", error);
-        }
-      }
-    }, 200);
-  });
+  updateWithdrawSummary();
 }
 
 // Start when DOM is ready
