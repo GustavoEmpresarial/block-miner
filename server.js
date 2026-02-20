@@ -262,7 +262,7 @@ app.use((req, res, next) => {
 app.use((req, res, next) => {
   if (req.path.endsWith(".css") || req.path.endsWith(".js")) {
     res.on("finish", () => {
-      logger.debug(`Asset served: ${req.method} ${req.path}", { statusCode: res.statusCode });
+      logger.debug(`Asset served: ${req.method} ${req.path}`, { statusCode: res.statusCode });
     });
   }
 
@@ -289,8 +289,6 @@ const swapRouter = require("./routes/swap");
 // Import PTP router
 const ptpRouter = require("./routes/ptp");
 
-// Import FaucetPay router
-const faucetpayRouter = require("./routes/faucetpay");
 const faucetRouter = require("./routes/faucet");
 const ptpController = require("./controllers/ptpController");
 
@@ -416,7 +414,6 @@ app.use("/api/ptp", ptpRouter);
 app.use("/api/faucet", faucetRouter);
 app.use("/api/wallet", walletRouter);
 app.use("/api/swap", swapRouter);
-app.use("/api/faucetpay", faucetpayRouter);
 
 async function getActiveGameHashRateTotal() {
   const now = Date.now();
