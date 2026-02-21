@@ -49,6 +49,29 @@
 
       <section class="card">
         <div class="table-header">
+          <h2>Pending Withdrawals</h2>
+          <span id="withdrawalsStatus" class="status"></span>
+        </div>
+        <div class="table-wrapper" style="overflow-x: auto;">
+          <table class="table-compact">
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>User ID</th>
+                <th>Amount (POL)</th>
+                <th style="min-width: 300px;">Address</th>
+                <th>Requested</th>
+                <th>Status</th>
+                <th>Action</th>
+              </tr>
+            </thead>
+            <tbody id="withdrawalsTable"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="card">
+        <div class="table-header">
           <h2>Audit logs</h2>
           <span id="auditStatus" class="status"></span>
         </div>

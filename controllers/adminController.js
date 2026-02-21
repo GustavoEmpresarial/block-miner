@@ -258,6 +258,150 @@ function createAdminController() {
     }
   }
 
+  // === Manual Withdrawal Management ===
+
+  async function listPendingWithdrawals(req, res) {
+    try {
+      const walletModel = require("../models/walletModel");
+      const withdrawals = await walletModel.getPendingWithdrawals();
+      res.json({ ok: true, withdrawals });
+    } catch (error) {
+      console.error("Admin list pending withdrawals error:", error);
+      res.status(500).json({ ok: false, message: "Unable to load pending withdrawals." });
+    }
+  }
+
+  async function approveWithdrawal(req, res) {
+    try {
+      const { withdrawalId } = req.params;
+      
+      if (!withdrawalId) {
+        return res.status(400).json({ ok: false, message: "Missing withdrawal ID" });
+      }
+
+      // Get the withdrawal
+      const withdrawal = await get(
+        "SELECT id, user_id, amount, address, status FROM transactions WHERE id = ? AND type = 'withdrawal'",
+        [withdrawalId]
+      );
+
+      if (!withdrawal) {
+        return res.status(404).json({ ok: false, message: "Withdrawal not found" });
+      }
+
+      if (withdrawal.status !== "pending") {
+        return res.status(400).json({ ok: false, message: `Withdrawal is already ${withdrawal.status}` });
+      }
+
+      // Just mark as approved - NO automatic blockchain processing
+      // User will manually pay and confirm with completeWithdrawalManually()
+      await run(
+        "UPDATE transactions SET status = 'approved', updated_at = ? WHERE id = ?",
+        [Date.now(), withdrawalId]
+      );
+
+      res.json({ 
+        ok: true, 
+        message: "Withdrawal approved. Ready to pay manually. Click '✓ Confirm Paid' after you send the funds.",
+        withdrawal: {
+          id: withdrawalId,
+          status: "approved",
+          amount: withdrawal.amount,
+          address: withdrawal.address
+        }
+      });
+    } catch (error) {
+      console.error("Admin approve withdrawal error:", error);
+      res.status(500).json({ ok: false, message: "Unable to approve withdrawal." });
+    }
+  }
+
+  async function rejectWithdrawal(req, res) {
+    try {
+      const walletModel = require("../models/walletModel");
+      const { withdrawalId } = req.params;
+      
+      if (!withdrawalId) {
+        return res.status(400).json({ ok: false, message: "Missing withdrawal ID" });
+      }
+
+      // Get the withdrawal
+      const withdrawal = await get(
+        "SELECT id, user_id, amount, address, status FROM transactions WHERE id = ? AND type = 'withdrawal'",
+        [withdrawalId]
+      );
+
+      if (!withdrawal) {
+        return res.status(404).json({ ok: false, message: "Withdrawal not found" });
+      }
+
+      if (withdrawal.status !== "pending") {
+        return res.status(400).json({ ok: false, message: `Withdrawal is already ${withdrawal.status}` });
+      }
+
+      // Mark as failed (this will refund the balance)
+      await walletModel.updateTransactionStatus(withdrawalId, "failed");
+
+      res.json({ 
+        ok: true, 
+        message: "Withdrawal rejected and balance refunded",
+        withdrawal: {
+          id: withdrawalId,
+          status: "failed"
+        }
+      });
+    } catch (error) {
+      console.error("Admin reject withdrawal error:", error);
+      res.status(500).json({ ok: false, message: "Unable to reject withdrawal." });
+    }
+  }
+
+  async function completeWithdrawalManually(req, res) {
+    try {
+      const walletModel = require("../models/walletModel");
+      const { withdrawalId } = req.params;
+      const { txHash } = req.body || {};
+      
+      if (!withdrawalId) {
+        return res.status(400).json({ ok: false, message: "Missing withdrawal ID" });
+      }
+
+      // Get the withdrawal
+      const withdrawal = await get(
+        "SELECT id, user_id, amount, address, status FROM transactions WHERE id = ? AND type = 'withdrawal'",
+        [withdrawalId]
+      );
+
+      if (!withdrawal) {
+        return res.status(404).json({ ok: false, message: "Withdrawal not found" });
+      }
+
+      if (withdrawal.status === "completed") {
+        return res.status(400).json({ ok: false, message: "Withdrawal is already completed" });
+      }
+
+      if (withdrawal.status === "failed") {
+        return res.status(400).json({ ok: false, message: "Withdrawal is already failed" });
+      }
+
+      // Mark as completed (with optional tx_hash)
+      await walletModel.updateTransactionStatus(withdrawalId, "completed", txHash || null);
+
+      res.json({ 
+        ok: true, 
+        message: "Withdrawal marked as completed",
+        withdrawal: {
+          id: withdrawalId,
+          status: "completed",
+          txHash: txHash || null
+        }
+      });
+    } catch (error) {
+      console.error("Admin complete withdrawal error:", error);
+      res.status(500).json({ ok: false, message: "Unable to complete withdrawal." });
+    }
+  }
+
   return {
     getStats,
     listRecentUsers,
@@ -265,7 +409,11 @@ function createAdminController() {
     setUserBan,
     listMiners,
     createMiner,
-    updateMiner
+    updateMiner,
+    listPendingWithdrawals,
+    approveWithdrawal,
+    rejectWithdrawal,
+    completeWithdrawalManually
   };
 }
 

@@ -2,23 +2,28 @@ const { ethers } = require("ethers");
 const walletModel = require("../models/walletModel");
 const logger = require("../utils/logger").child("DepositsCron");
 
-const POLYGON_RPC_URL = process.env.POLYGON_RPC_URL || "https://polygon-rpc.com";
+const POLYGON_RPC_URL = process.env.POLYGON_RPC_URL || "https://poly.api.pocket.network";
+const POLYGON_RPC_TIMEOUT_MS = Number(process.env.POLYGON_RPC_TIMEOUT_MS || 4500);
 const DEFAULT_RPC_URLS = [
-  "https://polygon-rpc.com",
-  "https://rpc-mainnet.matic.network",
-  "https://rpc.ankr.com/polygon",
   "https://polygon-bor-rpc.publicnode.com",
-  "https://polygon-mainnet.public.blastapi.io",
+  "https://polygon.drpc.org",
+  "https://poly.api.pocket.network",
+  "https://1rpc.io/matic",
   "https://polygon.blockpi.network/v1/rpc/public",
   "https://polygon.meowrpc.com",
-  "https://1rpc.io/matic",
-  "https://polygon.drpc.org",
-  "https://endpoints.omniatech.io/v1/polygon/mainnet/public"
+  "https://polygon-mainnet.public.blastapi.io",
+  "https://rpc-mainnet.matic.network"
 ];
 const RPC_URLS = Array.from(new Set([POLYGON_RPC_URL, ...DEFAULT_RPC_URLS]));
 const CHECKIN_RECEIVER = process.env.CHECKIN_RECEIVER || "0x95EA8E99063A3EF1B95302aA1C5bE199653EEb13";
 
 let currentProviderIndex = 0;
+
+function createProvider(url) {
+  const request = new ethers.FetchRequest(url);
+  request.timeout = POLYGON_RPC_TIMEOUT_MS;
+  return new ethers.JsonRpcProvider(request);
+}
 
 async function getProvider() {
   const maxAttempts = RPC_URLS.length;
@@ -26,7 +31,7 @@ async function getProvider() {
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
     try {
       const url = RPC_URLS[currentProviderIndex];
-      const provider = new ethers.JsonRpcProvider(url);
+      const provider = createProvider(url);
       await provider.getBlockNumber();
       return provider;
     } catch (error) {

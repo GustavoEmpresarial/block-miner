@@ -58,6 +58,15 @@ async function saveWalletAddress(userId, walletAddress) {
   return true;
 }
 
+// Check if user has a pending withdrawal (blocks new request)
+async function hasPendingWithdrawal(userId) {
+  const pending = await get(
+    "SELECT id FROM transactions WHERE user_id = ? AND type = 'withdrawal' AND status IN ('pending') LIMIT 1",
+    [userId]
+  );
+  return Boolean(pending);
+}
+
 // Create withdrawal transaction
 async function createWithdrawal(userId, amount, address) {
   const now = Date.now();
@@ -70,29 +79,65 @@ async function createWithdrawal(userId, amount, address) {
     throw new Error("Invalid wallet address");
   }
 
-  // Get current balance
-  const balance = await getUserBalance(userId);
+  // Atomic reservation to prevent double-withdrawals under concurrency.
+  await run("BEGIN IMMEDIATE");
+  try {
+    const pending = await get(
+      "SELECT id FROM transactions WHERE user_id = ? AND type = 'withdrawal' AND status IN ('pending') LIMIT 1",
+      [userId]
+    );
+    if (pending) {
+      throw new Error("Pending withdrawal exists");
+    }
 
-  if (balance.balance < amount) {
-    throw new Error("Insufficient balance");
+    const reserve = await run(
+      "UPDATE users_temp_power SET balance = balance - ? WHERE user_id = ? AND balance >= ?",
+      [amount, userId, amount]
+    );
+    if (!reserve?.changes) {
+      throw new Error("Insufficient balance");
+    }
+
+    const insertQuery = `
+      INSERT INTO transactions (user_id, type, amount, address, status, funds_reserved, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `;
+    const result = await run(insertQuery, [userId, "withdrawal", amount, address, "pending", 1, now, now]);
+
+    await run("COMMIT");
+
+    return {
+      id: result.lastID,
+      type: "withdrawal",
+      amount,
+      address,
+      status: "pending",
+      created_at: now
+    };
+  } catch (error) {
+    try {
+      await run("ROLLBACK");
+    } catch {
+      // ignore rollback errors
+    }
+
+    if (error?.message === "Pending withdrawal exists") {
+      const conflict = new Error("Pending withdrawal");
+      conflict.code = "PENDING_WITHDRAWAL";
+      throw conflict;
+    }
+
+    throw error;
   }
+}
 
-  // Create transaction record
-  const query = `
-    INSERT INTO transactions (user_id, type, amount, address, status, created_at)
-    VALUES (?, ?, ?, ?, ?, ?)
-  `;
-
-  const result = await run(query, [userId, "withdrawal", amount, address, "pending", now]);
-
-  return {
-    id: result.lastID,
-    type: "withdrawal",
-    amount,
-    address,
-    status: "pending",
-    created_at: now
-  };
+async function attachWithdrawalTx(transactionId, { txHash, rawTx, nonce, gasPrice, gasLimit } = {}) {
+  const now = Date.now();
+  await run(
+    "UPDATE transactions SET tx_hash = COALESCE(?, tx_hash), raw_tx = COALESCE(?, raw_tx), tx_nonce = COALESCE(?, tx_nonce), tx_gas_price = COALESCE(?, tx_gas_price), tx_gas_limit = COALESCE(?, tx_gas_limit), updated_at = ? WHERE id = ?",
+    [txHash || null, rawTx || null, Number.isFinite(nonce) ? nonce : null, gasPrice != null ? String(gasPrice) : null, Number.isFinite(gasLimit) ? gasLimit : null, now, transactionId]
+  );
+  return true;
 }
 
 // Get transaction history
@@ -119,39 +164,76 @@ async function getTransactions(userId, limit = 50) {
 async function updateTransactionStatus(transactionId, status, txHash = null) {
   const now = Date.now();
   const completedAt = status === "completed" ? now : null;
-  
-  await run(
-    "UPDATE transactions SET status = ?, tx_hash = ?, completed_at = ? WHERE id = ?",
-    [status, txHash, completedAt, transactionId]
-  );
-  
-  // If completed, update total_withdrawn and deduct balance
-  if (status === "completed") {
-    const tx = await get("SELECT user_id, amount FROM transactions WHERE id = ?", [transactionId]);
-    if (tx) {
-      await run(
-        "UPDATE users_temp_power SET balance = balance - ? WHERE user_id = ?",
-        [tx.amount, tx.user_id]
-      );
-      await run(
-        "UPDATE users_temp_power SET total_withdrawn = total_withdrawn + ? WHERE user_id = ?",
-        [tx.amount, tx.user_id]
-      );
+
+  await run("BEGIN IMMEDIATE");
+  try {
+    const tx = await get(
+      "SELECT id, user_id, type, amount, status, funds_reserved FROM transactions WHERE id = ?",
+      [transactionId]
+    );
+    if (!tx) {
+      await run("COMMIT");
+      return true;
     }
+
+    const prevStatus = tx.status;
+
+    await run(
+      "UPDATE transactions SET status = ?, tx_hash = COALESCE(?, tx_hash), completed_at = ?, updated_at = ? WHERE id = ?",
+      [status, txHash, completedAt, now, transactionId]
+    );
+
+    if (tx.type === "withdrawal") {
+      const amount = Number(tx.amount);
+      const userId = Number(tx.user_id);
+      const reserved = Number(tx.funds_reserved || 0) === 1;
+
+      // Apply side effects exactly once per transition.
+      if (status === "completed" && prevStatus !== "completed") {
+        if (!reserved) {
+          // Legacy rows (created before funds reservation) still need balance deduction on completion.
+          await run("UPDATE users_temp_power SET balance = balance - ? WHERE user_id = ?", [amount, userId]);
+        }
+        await run("UPDATE users_temp_power SET total_withdrawn = total_withdrawn + ? WHERE user_id = ?", [amount, userId]);
+        await run("UPDATE transactions SET funds_reserved = 0, updated_at = ? WHERE id = ?", [now, transactionId]);
+      }
+
+      if (status === "failed" && prevStatus !== "failed" && prevStatus !== "completed") {
+        // Only refund if already reserved and not completed
+        if (reserved) {
+          await run("UPDATE users_temp_power SET balance = balance + ? WHERE user_id = ?", [amount, userId]);
+          await run("UPDATE transactions SET funds_reserved = 0, updated_at = ? WHERE id = ?", [now, transactionId]);
+        }
+      }
+
+      // Transition from in_progress to completed
+      if (status === "completed" && prevStatus === "in_progress") {
+        // Balance already deducted, just mark as final
+        await run("UPDATE transactions SET funds_reserved = 0, updated_at = ? WHERE id = ?", [now, transactionId]);
+      }
+    }
+
+    await run("COMMIT");
+    return true;
+  } catch (error) {
+    try {
+      await run("ROLLBACK");
+    } catch {
+      // ignore
+    }
+    throw error;
   }
-  
-  return true;
 }
 
-// Admin: Get pending withdrawals
+// Admin: Get pending withdrawals (including approved - not yet paid)
 async function getPendingWithdrawals() {
   const query = `
     SELECT 
-      t.id, t.user_id, t.amount, t.address, t.created_at,
+      t.id, t.user_id, t.amount, t.address, t.status, t.tx_hash, t.created_at,
       u.username
     FROM transactions t
     JOIN users u ON t.user_id = u.id
-    WHERE t.type = 'withdrawal' AND t.status = 'pending'
+    WHERE t.type = 'withdrawal' AND t.status IN ('pending', 'approved')
     ORDER BY t.created_at ASC
   `;
   
@@ -163,6 +245,70 @@ async function getPendingWithdrawals() {
   });
   
   return withdrawals;
+}
+
+async function failAllPendingWithdrawals() {
+  const rows = await new Promise((resolve, reject) => {
+    db.all(
+      "SELECT id FROM transactions WHERE type = 'withdrawal' AND status = 'pending' ORDER BY created_at ASC, id ASC",
+      [],
+      (err, allRows) => {
+        if (err) reject(err);
+        else resolve(allRows || []);
+      }
+    );
+  });
+
+  let failedCount = 0;
+  for (const row of rows) {
+    try {
+      await updateTransactionStatus(row.id, "failed");
+      failedCount++;
+    } catch {
+      // best-effort; continue
+    }
+  }
+
+  return { totalPending: rows.length, failedCount };
+}
+
+// Cron: Get pending withdrawal transactions (includes tx_hash)
+async function getPendingWithdrawalTransactions(limit = 100) {
+  const safeLimit = Number.isFinite(Number(limit)) ? Math.max(1, Math.min(500, Number(limit))) : 100;
+  const query = `
+    SELECT id, user_id, amount, address, tx_hash, raw_tx, tx_nonce, tx_gas_price, tx_gas_limit, status, created_at, updated_at
+    FROM transactions
+    WHERE type = 'withdrawal' AND status = 'pending'
+    ORDER BY created_at ASC
+    LIMIT ?
+  `;
+
+  return new Promise((resolve, reject) => {
+    db.all(query, [safeLimit], (err, rows) => {
+      if (err) reject(err);
+      else resolve(rows || []);
+    });
+  });
+}
+
+async function getWithdrawalTransactionsByTxHash(txHash) {
+  if (!txHash) {
+    return [];
+  }
+
+  const query = `
+    SELECT id, user_id, amount, address, tx_hash, status, created_at
+    FROM transactions
+    WHERE type = 'withdrawal' AND tx_hash = ?
+    ORDER BY created_at ASC, id ASC
+  `;
+
+  return new Promise((resolve, reject) => {
+    db.all(query, [txHash], (err, rows) => {
+      if (err) reject(err);
+      else resolve(rows || []);
+    });
+  });
 }
 
 // Deduct balance from user wallet
@@ -306,10 +452,15 @@ module.exports = {
   getUserBalance,
   getWallet: getUserBalance, // Alias for compatibility
   saveWalletAddress,
+  hasPendingWithdrawal,
   createWithdrawal,
+  attachWithdrawalTx,
   getTransactions,
   updateTransactionStatus,
   getPendingWithdrawals,
+  failAllPendingWithdrawals,
+  getPendingWithdrawalTransactions,
+  getWithdrawalTransactionsByTxHash,
   deductBalance,
   createDeposit,
   updateDepositStatus,

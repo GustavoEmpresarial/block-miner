@@ -3,27 +3,49 @@ const walletModel = require("../models/walletModel");
 const { createAuditLog } = require("../models/auditLogModel");
 const logger = require("../utils/logger").getLogger("WalletController");
 const { getAnonymizedRequestIp } = require("../utils/clientIp");
+const { allocateNonce, resetNonce } = require("../utils/nonceManager");
 
-const POLYGON_RPC_URL = process.env.POLYGON_RPC_URL || "https://polygon-rpc.com";
+const POLYGON_CHAIN_ID = Number(process.env.POLYGON_CHAIN_ID || 137);
+const POLYGON_RPC_URL = process.env.POLYGON_RPC_URL || "https://poly.api.pocket.network";
+const POLYGON_RPC_TIMEOUT_MS = Number(process.env.POLYGON_RPC_TIMEOUT_MS || 4500);
+const POLYGON_BROADCAST_RPC_URL = String(process.env.POLYGON_BROADCAST_RPC_URL || "").trim();
+const POLYGON_BROADCAST_RPC_URLS_RAW = String(process.env.POLYGON_BROADCAST_RPC_URLS || "").trim();
 const DEFAULT_RPC_URLS = [
-  "https://polygon-rpc.com",
-  "https://rpc-mainnet.matic.network",
-  "https://rpc.ankr.com/polygon",
   "https://polygon-bor-rpc.publicnode.com",
-  "https://polygon-mainnet.public.blastapi.io",
+  "https://polygon.drpc.org",
+  "https://poly.api.pocket.network",
+  "https://1rpc.io/matic",
   "https://polygon.blockpi.network/v1/rpc/public",
   "https://polygon.meowrpc.com",
-  "https://1rpc.io/matic",
-  "https://polygon.drpc.org",
-  "https://endpoints.omniatech.io/v1/polygon/mainnet/public"
+  "https://polygon-mainnet.public.blastapi.io",
+  "https://rpc.ankr.com/polygon",
+  "https://rpc-mainnet.matic.network"
 ];
 const RPC_URLS = Array.from(new Set([POLYGON_RPC_URL, ...DEFAULT_RPC_URLS]));
+const BROADCAST_RPC_URLS = (() => {
+  const urls = [];
+  if (POLYGON_BROADCAST_RPC_URLS_RAW) {
+    urls.push(
+      ...POLYGON_BROADCAST_RPC_URLS_RAW
+        .split(",")
+        .map((v) => v.trim())
+        .filter(Boolean)
+    );
+  }
+  if (POLYGON_BROADCAST_RPC_URL) {
+    urls.unshift(POLYGON_BROADCAST_RPC_URL);
+  }
+  return Array.from(new Set(urls.length > 0 ? urls : RPC_URLS));
+})();
 const WITHDRAWAL_PRIVATE_KEY = process.env.WITHDRAWAL_PRIVATE_KEY;
 const WITHDRAWAL_MNEMONIC = process.env.WITHDRAWAL_MNEMONIC;
 const CHECKIN_RECEIVER = process.env.CHECKIN_RECEIVER || "0x95EA8E99063A3EF1B95302aA1C5bE199653EEb13";
 
-const MIN_WITHDRAWAL = 0.1;
+const MIN_WITHDRAWAL = 10;
 const MAX_WITHDRAWAL = 1_000_000;
+
+const ALLOW_WITHDRAW_TO_CONTRACTS = String(process.env.ALLOW_WITHDRAW_TO_CONTRACTS || "").trim() === "1";
+
 
 function normalizeAmountInput(amountRaw) {
   if (amountRaw === null || amountRaw === undefined) {
@@ -47,7 +69,7 @@ function validateWithdrawalInput(amountRaw, address) {
   const amount = normalizeAmountInput(amountRaw);
 
   if (amount < MIN_WITHDRAWAL) {
-    throw new Error("Minimum withdrawal amount is 0.1 POL");
+    throw new Error("Minimum withdrawal amount is 10 POL");
   }
 
   if (amount > MAX_WITHDRAWAL) {
@@ -65,14 +87,72 @@ function isSameAddress(a, b) {
   return String(a || "").toLowerCase() === String(b || "").toLowerCase();
 }
 
+async function isContractAddress(address) {
+  try {
+    const code = await rpcCallWithFallback(RPC_URLS, "eth_getCode", [address, "latest"]);
+    const normalized = String(code || "0x").toLowerCase();
+    return normalized !== "0x" && normalized !== "0x0";
+  } catch {
+    // If we can't check, don't block (avoid false negatives due to RPC outages).
+    return false;
+  }
+}
+
 function createProvider(rpcUrl) {
-  const provider = new ethers.JsonRpcProvider(rpcUrl);
+  const request = new ethers.FetchRequest(rpcUrl);
+  request.timeout = POLYGON_RPC_TIMEOUT_MS;
+  const provider = new ethers.JsonRpcProvider(request);
   // Avoid Polygon gas station rate limits by overriding fee data lookup.
   provider.getFeeData = async () => {
     const gasPrice = await provider.send("eth_gasPrice", []);
     return new ethers.FeeData(gasPrice, null, null);
   };
   return provider;
+}
+
+async function fetchWithTimeout(url, init, timeoutMs) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...init, signal: controller.signal });
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function rpcCallWithFallback(rpcUrls, method, params) {
+  let lastError = null;
+  const body = JSON.stringify({ jsonrpc: "2.0", id: 1, method, params });
+
+  for (const rpcUrl of rpcUrls) {
+    try {
+      const response = await fetchWithTimeout(
+        rpcUrl,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body
+        },
+        POLYGON_RPC_TIMEOUT_MS
+      );
+
+      if (!response.ok) {
+        throw new Error(`RPC request failed (HTTP ${response.status})`);
+      }
+
+      const payload = await response.json();
+      if (payload?.error) {
+        throw new Error(payload.error.message || "RPC error");
+      }
+
+      return payload.result;
+    } catch (error) {
+      lastError = new Error(`${rpcUrl}: ${error.message || String(error)}`);
+      continue;
+    }
+  }
+
+  throw lastError || new Error("RPC request failed");
 }
 
 async function fetchTransactionWithReceipt(txHash) {
@@ -113,16 +193,43 @@ async function getConfirmations(provider, receipt) {
 
 function getPayoutWallet(provider) {
 
-  if (WITHDRAWAL_MNEMONIC) {
-    return ethers.Wallet.fromPhrase(WITHDRAWAL_MNEMONIC, provider);
+  const mnemonic = String(WITHDRAWAL_MNEMONIC || "").trim();
+  if (mnemonic) {
+    return ethers.Wallet.fromPhrase(mnemonic, provider);
   }
 
-  if (WITHDRAWAL_PRIVATE_KEY) {
-    if (WITHDRAWAL_PRIVATE_KEY.includes(" ")) {
-      return ethers.Wallet.fromPhrase(WITHDRAWAL_PRIVATE_KEY, provider);
+  const rawPrivateKey = String(WITHDRAWAL_PRIVATE_KEY || "").trim();
+  if (rawPrivateKey) {
+    const compact = rawPrivateKey.replace(/\s+/g, "");
+    const isHexPrivateKey = /^0x?[0-9a-fA-F]{64}$/.test(compact);
+    if (isHexPrivateKey) {
+      const normalized = compact.startsWith("0x") ? compact : `0x${compact}`;
+      return new ethers.Wallet(normalized, provider);
     }
 
-    return new ethers.Wallet(WITHDRAWAL_PRIVATE_KEY, provider);
+    // Support operators who put the mnemonic in WITHDRAWAL_PRIVATE_KEY by mistake.
+    return ethers.Wallet.fromPhrase(rawPrivateKey, provider);
+  }
+
+  throw new Error("Missing withdrawal wallet configuration");
+}
+
+function getPayoutWalletNoProvider() {
+  const mnemonic = String(WITHDRAWAL_MNEMONIC || "").trim();
+  if (mnemonic) {
+    return ethers.Wallet.fromPhrase(mnemonic);
+  }
+
+  const rawPrivateKey = String(WITHDRAWAL_PRIVATE_KEY || "").trim();
+  if (rawPrivateKey) {
+    const compact = rawPrivateKey.replace(/\s+/g, "");
+    const isHexPrivateKey = /^0x?[0-9a-fA-F]{64}$/.test(compact);
+    if (isHexPrivateKey) {
+      const normalized = compact.startsWith("0x") ? compact : `0x${compact}`;
+      return new ethers.Wallet(normalized);
+    }
+
+    return ethers.Wallet.fromPhrase(rawPrivateKey);
   }
 
   throw new Error("Missing withdrawal wallet configuration");
@@ -137,8 +244,14 @@ async function ensureHotWalletHasBalance(amount) {
     try {
       const provider = createProvider(rpcUrl);
       const wallet = getPayoutWallet(provider);
-      const balance = await provider.getBalance(wallet.address);
-      if (balance < value) {
+      const [balance, gasPrice] = await Promise.all([
+        provider.getBalance(wallet.address),
+        provider.send("eth_gasPrice", [])
+      ]);
+
+      const gasPriceBig = BigInt(gasPrice);
+      const required = value + gasPriceBig * 21_000n;
+      if (balance < required) {
         throw new Error("Hot wallet balance is insufficient");
       }
       return;
@@ -157,39 +270,114 @@ async function ensureHotWalletHasBalance(amount) {
 async function sendOnChainWithdrawal(address, amount) {
   const amountStr = Number(amount).toFixed(6);
   const value = ethers.parseEther(amountStr);
-  let lastError = null;
 
-  for (const rpcUrl of RPC_URLS) {
-    try {
-      const provider = createProvider(rpcUrl);
-      const wallet = getPayoutWallet(provider);
+  const wallet = getPayoutWalletNoProvider();
 
-      const balance = await provider.getBalance(wallet.address);
-      if (balance < value) {
-        throw new Error("Hot wallet balance is insufficient");
+  const nonce = await allocateNonce({
+    chainId: POLYGON_CHAIN_ID,
+    address: wallet.address,
+    getPendingNonce: async () => rpcCallWithFallback(RPC_URLS, "eth_getTransactionCount", [wallet.address, "pending"])
+  });
+  const gasPriceHex = await rpcCallWithFallback(RPC_URLS, "eth_gasPrice", []);
+  const gasPrice = BigInt(gasPriceHex);
+
+  // Check balance with read RPCs (include gas).
+  const balanceHex = await rpcCallWithFallback(RPC_URLS, "eth_getBalance", [wallet.address, "latest"]);
+  const balance = BigInt(balanceHex);
+
+  // Default gasLimit: EOA transfers are 21k, contract recipients may require more.
+  let gasLimit = 21_000;
+  try {
+    if (ALLOW_WITHDRAW_TO_CONTRACTS) {
+      const contract = await isContractAddress(address);
+      if (contract) {
+        gasLimit = 100_000;
       }
-
-      const gasPrice = await provider.send("eth_gasPrice", []);
-      const txResponse = await wallet.sendTransaction({
-        to: address,
-        value,
-        gasPrice,
-        gasLimit: 21_000
-      });
-
-      const receipt = await txResponse.wait(1);
-      if (!receipt || receipt.status !== 1) {
-        throw new Error("Transaction failed");
-      }
-
-      return txResponse.hash;
-    } catch (error) {
-      lastError = error;
-      continue;
     }
+  } catch {
+    // ignore
   }
 
-  throw lastError || new Error("All RPC endpoints failed");
+  // Estimate gas when possible (native transfers to contracts can require > 21k).
+  try {
+    const estimateHex = await rpcCallWithFallback(RPC_URLS, "eth_estimateGas", [{
+      from: wallet.address,
+      to: address,
+      value: ethers.toBeHex(value)
+    }]);
+    const estimated = Number(BigInt(estimateHex));
+    if (Number.isFinite(estimated) && estimated > 0) {
+      const buffered = Math.ceil(estimated * 1.2);
+      gasLimit = Math.max(21_000, Math.min(500_000, buffered));
+    }
+  } catch {
+    // keep default gasLimit
+  }
+
+  const txRequest = {
+    chainId: POLYGON_CHAIN_ID,
+    to: address,
+    value,
+    nonce,
+    gasPrice,
+    gasLimit
+  };
+
+  const required = value + gasPrice * BigInt(gasLimit);
+  if (balance < required) {
+    throw new Error("Hot wallet balance is insufficient");
+  }
+
+  const signedTx = await wallet.signTransaction(txRequest);
+  const localTxHash = ethers.keccak256(signedTx);
+
+  let sendError = null;
+  try {
+    const remoteTxHash = await rpcCallWithFallback(BROADCAST_RPC_URLS, "eth_sendRawTransaction", [signedTx]);
+    if (remoteTxHash && String(remoteTxHash).toLowerCase() !== String(localTxHash).toLowerCase()) {
+      logger.warn("RPC returned a different tx_hash than local hash", { localTxHash, remoteTxHash });
+    }
+  } catch (error) {
+    const msg = String(error?.message || "").toLowerCase();
+    if (msg.includes("nonce") || msg.includes("replacement") || msg.includes("already known") || msg.includes("known transaction")) {
+      resetNonce({ chainId: POLYGON_CHAIN_ID, address: wallet.address });
+    }
+    // Do NOT throw here: the tx may have been accepted but the RPC failed/timeout.
+    // Returning the local tx hash + raw tx allows the cron to rebroadcast the exact same transaction idempotently.
+    sendError = error;
+  }
+
+  // Quick receipt check (optional)
+  const receiptTimeoutMs = Number(process.env.WITHDRAWAL_RECEIPT_TIMEOUT_MS || 15000);
+  const pollIntervalMs = 1500;
+  const startedAt = Date.now();
+
+  while (Date.now() - startedAt < receiptTimeoutMs) {
+    try {
+      const receipt = await rpcCallWithFallback(RPC_URLS, "eth_getTransactionReceipt", [localTxHash]);
+      if (!receipt) {
+        // not mined yet
+      } else if (receipt.status === "0x1") {
+        return { txHash: localTxHash, rawTx: signedTx, nonce, gasPrice: gasPrice.toString(), gasLimit: Number(txRequest.gasLimit), confirmed: true, sendError: sendError?.message || null };
+      } else if (receipt.status === "0x0") {
+        const failedError = new Error("Transaction failed");
+        failedError.txHash = localTxHash;
+        failedError.rawTx = signedTx;
+        failedError.nonce = nonce;
+        failedError.gasPrice = gasPrice.toString();
+        failedError.gasLimit = Number(txRequest.gasLimit);
+        throw failedError;
+      }
+    } catch (error) {
+      if (error.message === "Transaction failed") {
+        throw error;
+      }
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, pollIntervalMs));
+  }
+
+  return { txHash: localTxHash, rawTx: signedTx, nonce, gasPrice: gasPrice.toString(), gasLimit: Number(txRequest.gasLimit), confirmed: false, sendError: sendError?.message || null };
 }
 
 // Get user balance and wallet info
@@ -251,51 +439,48 @@ async function withdraw(req, res) {
     const { amount: amountRaw, address } = req.body;
     const amount = validateWithdrawalInput(amountRaw, address);
 
-    // Try to verify hot wallet balance, but don't block withdrawal if it fails
-    try {
-      await ensureHotWalletHasBalance(amount);
-    } catch (balanceError) {
-      console.warn("Warning: Could not verify hot wallet balance:", balanceError.message);
-      // Continue with withdrawal anyway - log shows we tried to verify
+    if (!ALLOW_WITHDRAW_TO_CONTRACTS) {
+      const isContract = await isContractAddress(address);
+      if (isContract) {
+        return res.status(400).json({
+          ok: false,
+          message: "Destination address looks like a contract. Withdrawals are only allowed to normal wallets (EOA)."
+        });
+      }
     }
-    
-    // Create withdrawal transaction
-    transaction = await walletModel.createWithdrawal(userId, amount, address);
 
-    // Try to send on-chain transaction
-    let txHash = null;
-    try {
-      txHash = await sendOnChainWithdrawal(address, amount);
-      await walletModel.updateTransactionStatus(transaction.id, "completed", txHash);
-    } catch (txError) {
-      console.warn("Warning: Could not broadcast transaction to blockchain:", txError.message);
-      // Keep transaction in pending status - can be retried later
-      await walletModel.updateTransactionStatus(transaction.id, "pending");
-      // Don't throw - withdrawal request was accepted
+    // Check if user has a pending withdrawal. Block new requests until the previous one completes.
+    const hasPending = await walletModel.hasPendingWithdrawal(userId);
+    if (hasPending) {
+      return res.status(409).json({
+        ok: false,
+        message: "You have a pending withdrawal. Please wait for it to complete or fail before requesting another."
+      });
     }
+
+    // Create withdrawal transaction (atomically reserves funds).
+    // NOTE: Manual approval is now required by admin before on-chain processing
+    transaction = await walletModel.createWithdrawal(userId, amount, address);
 
     try {
       await createAuditLog({
         userId,
-        action: "withdrawal",
+        action: "withdrawal_requested",
         ip: getAnonymizedRequestIp(req),
         userAgent: req.get("user-agent"),
-        details: { amount, address, txHash, status: txHash ? "completed" : "pending" }
+        details: { amount, address, status: "pending_approval" }
       });
     } catch (logError) {
       console.error("Failed to write withdrawal audit log:", logError);
     }
 
-    const finalStatus = txHash ? "completed" : "pending";
     res.json({
       ok: true,
-      message: txHash 
-        ? "Withdrawal processed successfully."
-        : "Withdrawal request accepted. Processing on blockchain...",
+      message: "Withdrawal request submitted. Waiting for admin approval.",
       transaction: {
         ...transaction,
-        status: finalStatus,
-        tx_hash: txHash || null
+        status: "pending",
+        tx_hash: null
       }
     });
   } catch (error) {
@@ -313,6 +498,13 @@ async function withdraw(req, res) {
       return res.status(400).json({
         ok: false,
         message: "Insufficient balance for withdrawal"
+      });
+    }
+
+    if (error?.code === "PENDING_WITHDRAWAL" || error.message === "Pending withdrawal") {
+      return res.status(409).json({
+        ok: false,
+        message: "You have a pending withdrawal. Please wait for it to complete or fail before requesting another."
       });
     }
 
@@ -348,6 +540,20 @@ async function withdraw(req, res) {
       return res.status(400).json({
         ok: false,
         message: "Withdrawal wallet has insufficient funds"
+      });
+    }
+
+    if (error.message === "All RPC endpoints failed") {
+      return res.status(503).json({
+        ok: false,
+        message: "Blockchain RPC unavailable. Try again in a moment."
+      });
+    }
+
+    if (error.message === "Transaction failed") {
+      return res.status(502).json({
+        ok: false,
+        message: "Blockchain transaction failed (reverted). Your balance was restored."
       });
     }
 
@@ -534,5 +740,6 @@ module.exports = {
   withdraw,
   getTransactions,
   getDepositAddress,
-  recordDeposit
+  recordDeposit,
+  sendOnChainWithdrawal
 };

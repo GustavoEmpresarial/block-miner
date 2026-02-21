@@ -28,6 +28,7 @@ const { requireAdmin } = require("./middleware/admin");
 const { getUserById } = require("./models/userModel");
 const { verifyAccessToken } = require("./utils/authTokens");
 const { getOrCreateMinerProfile } = require("./models/minerProfileModel");
+const walletModel = require("./models/walletModel");
 const { getBrazilCheckinDateKey } = require("./utils/checkinDate");
 const { startCronTasks } = require("./cron");
 const logger = require("./utils/logger");
@@ -53,34 +54,74 @@ const engine = new MiningEngine();
 const CHECKIN_RECEIVER = process.env.CHECKIN_RECEIVER || "0x95EA8E99063A3EF1B95302aA1C5bE199653EEb13";
 const CHECKIN_AMOUNT_WEI = BigInt(process.env.CHECKIN_AMOUNT_WEI || "10000000000000000");
 const POLYGON_CHAIN_ID = Number(process.env.POLYGON_CHAIN_ID || 137);
-const POLYGON_RPC_URL = process.env.POLYGON_RPC_URL || "https://polygon-rpc.com";
+const POLYGON_RPC_URL = process.env.POLYGON_RPC_URL || "https://polygon-bor-rpc.publicnode.com";
+const POLYGON_RPC_TIMEOUT_MS = Number(process.env.POLYGON_RPC_TIMEOUT_MS || 4500);
+
+const DEFAULT_POLYGON_RPC_URLS = [
+  "https://polygon-bor-rpc.publicnode.com",
+  "https://polygon.drpc.org",
+  "https://poly.api.pocket.network",
+  "https://1rpc.io/matic",
+  "https://polygon.blockpi.network/v1/rpc/public",
+  "https://polygon.meowrpc.com",
+  "https://polygon-mainnet.public.blastapi.io",
+  "https://rpc-mainnet.matic.network"
+];
+const POLYGON_RPC_URLS = Array.from(new Set([POLYGON_RPC_URL, ...DEFAULT_POLYGON_RPC_URLS]));
+
 const ONLINE_START_DATE = process.env.ONLINE_START_DATE || "2026-02-13";
 const MEMORY_GAME_REWARD_GH = Number(process.env.MEMORY_GAME_REWARD_GH || 5);
 
+async function fetchWithTimeout(url, init, timeoutMs) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    return await fetch(url, { ...init, signal: controller.signal });
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 async function rpcCall(method, params) {
-  const response = await fetch(POLYGON_RPC_URL, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify({
-      jsonrpc: "2.0",
-      id: 1,
-      method,
-      params
-    })
+  let lastError = null;
+
+  const body = JSON.stringify({
+    jsonrpc: "2.0",
+    id: 1,
+    method,
+    params
   });
 
-  if (!response.ok) {
-    throw new Error("RPC request failed");
+  for (const rpcUrl of POLYGON_RPC_URLS) {
+    try {
+      const response = await fetchWithTimeout(
+        rpcUrl,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body
+        },
+        POLYGON_RPC_TIMEOUT_MS
+      );
+
+      if (!response.ok) {
+        throw new Error(`RPC request failed (HTTP ${response.status})`);
+      }
+
+      const payload = await response.json();
+      if (payload.error) {
+        throw new Error(payload.error.message || "RPC error");
+      }
+
+      return payload.result;
+    } catch (error) {
+      lastError = error;
+      continue;
+    }
   }
 
-  const payload = await response.json();
-  if (payload.error) {
-    throw new Error(payload.error.message || "RPC error");
-  }
-
-  return payload.result;
+  throw lastError || new Error("RPC request failed");
 }
 
 async function ensureCheckinConfirmed(checkin) {
@@ -391,6 +432,12 @@ app.put("/api/admin/users/:id/ban", requireAuth, requireAdmin, adminLimiter, adm
 app.get("/api/admin/miners", requireAuth, requireAdmin, adminLimiter, adminController.listMiners);
 app.post("/api/admin/miners", requireAuth, requireAdmin, adminLimiter, adminController.createMiner);
 app.put("/api/admin/miners/:id", requireAuth, requireAdmin, adminLimiter, adminController.updateMiner);
+
+// Manual withdrawal management
+app.get("/api/admin/withdrawals/pending", requireAuth, requireAdmin, adminLimiter, adminController.listPendingWithdrawals);
+app.post("/api/admin/withdrawals/:withdrawalId/approve", requireAuth, requireAdmin, adminLimiter, adminController.approveWithdrawal);
+app.post("/api/admin/withdrawals/:withdrawalId/reject", requireAuth, requireAdmin, adminLimiter, adminController.rejectWithdrawal);
+app.post("/api/admin/withdrawals/:withdrawalId/complete", requireAuth, requireAdmin, adminLimiter, adminController.completeWithdrawalManually);
 
 app.get("/api/inventory", requireAuth, inventoryLimiter, inventoryController.listInventory);
 app.post(
@@ -778,7 +825,16 @@ function getLocalIpv4Addresses() {
 }
 
 initializeDatabase()
-  .then(() => {
+  .then(async () => {
+    try {
+      const result = await walletModel.failAllPendingWithdrawals();
+      if (result.totalPending > 0) {
+        logger.warn("Startup: marked pending withdrawals as failed", result);
+      }
+    } catch (error) {
+      logger.error("Startup: failed to mark pending withdrawals as failed", { error: error.message });
+    }
+
     startCronTasks({ engine, io, persistMinerProfile, run, buildPublicState });
     server.listen(PORT, "0.0.0.0", () => {
       logger.info(`BlockMiner server started on port ${PORT}`, { env: process.env.NODE_ENV });

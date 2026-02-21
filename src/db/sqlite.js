@@ -306,11 +306,35 @@ async function initializeDatabase() {
   const faucetMinerName = "Faucet Miner";
   const faucetMinerImage = "/assets/machines/reward1.png";
   const faucetMinerRow = await get("SELECT id FROM miners WHERE slug = ?", [faucetMinerSlug]);
+  let faucetMinerId = null;
   if (!faucetMinerRow) {
     const faucetNow = Date.now();
-    await run(
+    const result = await run(
       "INSERT INTO miners (name, slug, base_hash_rate, price, slot_size, image_url, is_active, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
       [faucetMinerName, faucetMinerSlug, 1, 0, 1, faucetMinerImage, 1, faucetNow]
+    );
+    faucetMinerId = result.lastID;
+  } else {
+    faucetMinerId = faucetMinerRow.id;
+  }
+
+  // Create faucet_rewards table
+  await run(`
+    CREATE TABLE IF NOT EXISTS faucet_rewards (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      miner_id INTEGER NOT NULL,
+      is_active INTEGER NOT NULL DEFAULT 1,
+      created_at INTEGER NOT NULL,
+      FOREIGN KEY (miner_id) REFERENCES miners(id)
+    )
+  `);
+
+  // Ensure faucet reward is in faucet_rewards table
+  const faucetRewardRow = await get("SELECT id FROM faucet_rewards WHERE miner_id = ?", [faucetMinerId]);
+  if (!faucetRewardRow) {
+    await run(
+      "INSERT INTO faucet_rewards (miner_id, is_active, created_at) VALUES (?, ?, ?)",
+      [faucetMinerId, 1, Date.now()]
     );
   }
 
@@ -586,8 +610,8 @@ async function initializeDatabase() {
     )
   `);
 
-  const faucetRewardRow = await get("SELECT id FROM faucet_rewards WHERE is_active = 1 LIMIT 1");
-  if (!faucetRewardRow) {
+  const existingFaucetReward = await get("SELECT id FROM faucet_rewards WHERE is_active = 1 LIMIT 1");
+  if (!existingFaucetReward) {
     const faucetMiner = await get("SELECT id FROM miners WHERE slug = ?", [faucetMinerSlug]);
     if (faucetMiner?.id) {
       const now = Date.now();
@@ -634,14 +658,49 @@ async function initializeDatabase() {
       amount REAL NOT NULL,
       address TEXT,
       tx_hash TEXT,
+      raw_tx TEXT,
+      tx_nonce INTEGER,
+      tx_gas_price TEXT,
+      tx_gas_limit INTEGER,
       from_address TEXT,
       status TEXT NOT NULL DEFAULT 'pending',
+      funds_reserved INTEGER NOT NULL DEFAULT 0,
       created_at INTEGER NOT NULL,
       updated_at INTEGER,
       completed_at INTEGER,
       FOREIGN KEY (user_id) REFERENCES users(id)
     )
   `);
+
+  try {
+    await run("ALTER TABLE transactions ADD COLUMN raw_tx TEXT");
+  } catch {
+    // Column already exists.
+  }
+
+  try {
+    await run("ALTER TABLE transactions ADD COLUMN tx_nonce INTEGER");
+  } catch {
+    // Column already exists.
+  }
+
+  try {
+    await run("ALTER TABLE transactions ADD COLUMN tx_gas_price TEXT");
+  } catch {
+    // Column already exists.
+  }
+
+  try {
+    await run("ALTER TABLE transactions ADD COLUMN tx_gas_limit INTEGER");
+  } catch {
+    // Column already exists.
+  }
+
+  try {
+    await run("ALTER TABLE transactions ADD COLUMN funds_reserved INTEGER NOT NULL DEFAULT 0");
+  } catch {
+    // Column already exists.
+  }
 
   try {
     await run("ALTER TABLE transactions ADD COLUMN from_address TEXT");

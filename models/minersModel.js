@@ -3,10 +3,10 @@ const { all, get, run } = require("./db");
 async function listActiveMiners(page, pageSize) {
   const offset = (page - 1) * pageSize;
   const miners = await all(
-    "SELECT id, name, base_hash_rate, price, slot_size, image_url FROM miners WHERE is_active = 1 ORDER BY id ASC LIMIT ? OFFSET ?",
+    "SELECT id, name, base_hash_rate, price, slot_size, image_url FROM miners WHERE is_active = 1 AND id NOT IN (SELECT DISTINCT miner_id FROM faucet_rewards) ORDER BY id ASC LIMIT ? OFFSET ?",
     [pageSize, offset]
   );
-  const totalRow = await get("SELECT COUNT(*) as total FROM miners WHERE is_active = 1");
+  const totalRow = await get("SELECT COUNT(*) as total FROM miners WHERE is_active = 1 AND id NOT IN (SELECT DISTINCT miner_id FROM faucet_rewards)");
 
   return {
     miners,
@@ -16,7 +16,7 @@ async function listActiveMiners(page, pageSize) {
 
 async function getActiveMinerById(minerId) {
   return get(
-    "SELECT id, name, base_hash_rate, price, slot_size, image_url FROM miners WHERE id = ? AND is_active = 1",
+    "SELECT id, name, base_hash_rate, price, slot_size, image_url FROM miners WHERE id = ? AND is_active = 1 AND id NOT IN (SELECT DISTINCT miner_id FROM faucet_rewards)",
     [minerId]
   );
 }

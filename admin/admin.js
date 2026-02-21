@@ -12,6 +12,9 @@ const usersTable = document.getElementById("usersTable");
 const auditStatus = document.getElementById("auditStatus");
 const auditTable = document.getElementById("auditTable");
 
+const withdrawalsStatus = document.getElementById("withdrawalsStatus");
+const withdrawalsTable = document.getElementById("withdrawalsTable");
+
 function escapeHtml(value) {
   return String(value ?? "")
     .replace(/&/g, "&amp;")
@@ -201,6 +204,130 @@ async function loadAudit() {
   }
 }
 
+function renderWithdrawals(withdrawals) {
+  if (!withdrawalsTable) return;
+  withdrawalsTable.innerHTML = "";
+
+  if (!withdrawals || withdrawals.length === 0) {
+    const row = document.createElement("tr");
+    row.innerHTML = `<td colspan="6" style="text-align: center; padding: 20px;">No pending withdrawals</td>`;
+    withdrawalsTable.appendChild(row);
+    return;
+  }
+
+  withdrawals.forEach((withdrawal) => {
+    const row = document.createElement("tr");
+    const statusBadge = {
+      pending: '<span class="pill" style="background: #FFA500; color: white;">⏳ Pending Review</span>',
+      approved: '<span class="pill" style="background: #2196F3; color: white;">📤 Approved - Awaiting Payment</span>',
+      completed: '<span class="pill" style="background: #4CAF50; color: white;">✓ Paid</span>',
+      failed: '<span class="pill" style="background: #F44336; color: white;">✗ Rejected</span>'
+    };
+    
+    row.innerHTML = `
+      <td>${escapeHtml(withdrawal.id)}</td>
+      <td>${escapeHtml(withdrawal.user_id)}</td>
+      <td>${formatNumber(withdrawal.amount, 6)}</td>
+      <td>
+        <div style="display: flex; gap: 8px; align-items: center;">
+          <code style="font-size: 11px; font-family: monospace; word-break: break-all; flex: 1;">${escapeHtml(withdrawal.address)}</code>
+          <button class="btn small" type="button" data-action="copy-address" data-address="${escapeHtml(withdrawal.address)}" title="Copy address">📋</button>
+        </div>
+      </td>
+      <td>${escapeHtml(formatDate(withdrawal.created_at))}</td>
+      <td>${statusBadge[withdrawal.status] || statusBadge.pending}</td>
+      <td>
+        <div style="display: flex; gap: 4px; flex-wrap: wrap;">
+          ${withdrawal.status === 'pending' ? `<button class="btn small good" type="button" data-action="approve" data-id="${withdrawal.id}">👍 Approve</button>` : ''}
+          ${['pending', 'approved'].includes(withdrawal.status) ? `<button class="btn small" type="button" data-action="complete" data-id="${withdrawal.id}">💳 Paid</button>` : ''}
+          ${['pending', 'approved'].includes(withdrawal.status) ? `<button class="btn small bad" type="button" data-action="reject" data-id="${withdrawal.id}">❌ Reject</button>` : ''}
+        </div>
+      </td>
+    `;
+
+    const copyBtn = row.querySelector('[data-action="copy-address"]');
+    const approveBtn = row.querySelector('[data-action="approve"]');
+    const completeBtn = row.querySelector('[data-action="complete"]');
+    const rejectBtn = row.querySelector('[data-action="reject"]');
+
+    copyBtn?.addEventListener("click", (e) => {
+      const address = e.target.dataset.address;
+      navigator.clipboard.writeText(address).then(() => {
+        const originalText = e.target.textContent;
+        e.target.textContent = "✓ Copied!";
+        setTimeout(() => {
+          e.target.textContent = originalText;
+        }, 2000);
+      });
+    });
+
+    approveBtn?.addEventListener("click", () => approveWithdrawal(withdrawal.id));
+    completeBtn?.addEventListener("click", () => completeWithdrawalManually(withdrawal.id));
+    rejectBtn?.addEventListener("click", () => rejectWithdrawal(withdrawal.id));
+
+    withdrawalsTable.appendChild(row);
+  });
+}
+
+async function loadWithdrawals() {
+  setSmallStatus(withdrawalsStatus, "Loading...", "info");
+  try {
+    const data = await request("/api/admin/withdrawals/pending");
+    renderWithdrawals(data.withdrawals || []);
+    setSmallStatus(withdrawalsStatus, `${data.withdrawals?.length || 0} pending`, "info");
+  } catch (error) {
+    setSmallStatus(withdrawalsStatus, error.message || "Failed to load withdrawals.", "error");
+  }
+}
+
+async function approveWithdrawal(withdrawalId) {
+  try {
+    setSmallStatus(withdrawalsStatus, "Approving...", "info");
+    const result = await request(`/api/admin/withdrawals/${withdrawalId}/approve`, {
+      method: "POST",
+      body: JSON.stringify({})
+    });
+    setSmallStatus(withdrawalsStatus, result.message || "Withdrawal approved.", "success");
+    await loadWithdrawals();
+  } catch (error) {
+    setSmallStatus(withdrawalsStatus, error.message || "Failed to approve withdrawal.", "error");
+  }
+}
+
+async function rejectWithdrawal(withdrawalId) {
+  if (!confirm("Are you sure you want to reject this withdrawal? The balance will be refunded to the user.")) {
+    return;
+  }
+  try {
+    setSmallStatus(withdrawalsStatus, "Rejecting...", "info");
+    const result = await request(`/api/admin/withdrawals/${withdrawalId}/reject`, {
+      method: "POST",
+      body: JSON.stringify({})
+    });
+    setSmallStatus(withdrawalsStatus, result.message || "Withdrawal rejected.", "success");
+    await loadWithdrawals();
+  } catch (error) {
+    setSmallStatus(withdrawalsStatus, error.message || "Failed to reject withdrawal.", "error");
+  }
+}
+
+async function completeWithdrawalManually(withdrawalId) {
+  const txHash = prompt("Enter transaction hash (optional, press OK to skip):", "");
+  if (txHash === null) return; // User cancelled
+  
+  try {
+    setSmallStatus(withdrawalsStatus, "Marking as completed...", "info");
+    const result = await request(`/api/admin/withdrawals/${withdrawalId}/complete`, {
+      method: "POST",
+      body: JSON.stringify({ txHash: txHash.trim() || null })
+    });
+    setSmallStatus(withdrawalsStatus, result.message || "Withdrawal completed.", "success");
+    await loadWithdrawals();
+  } catch (error) {
+    setSmallStatus(withdrawalsStatus, error.message || "Failed to complete withdrawal.", "error");
+  }
+}
+
 function renderTable(miners) {
   tableBody.innerHTML = "";
 
@@ -308,10 +435,12 @@ refreshButton?.addEventListener("click", () => {
   loadStats();
   loadUsers();
   loadAudit();
+  loadWithdrawals();
   loadMiners();
 });
 
 loadStats();
 loadUsers();
 loadAudit();
+loadWithdrawals();
 loadMiners();
