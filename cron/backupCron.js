@@ -1,5 +1,7 @@
 const logger = require("../utils/logger").child("BackupCron");
 const { createDatabaseBackup, pruneBackups, getBackupConfig } = require("../utils/backup");
+const cron = require('node-cron');
+const config = require('../src/config');
 
 const DEFAULT_STARTUP_DELAY_MS = 60_000;
 const DEFAULT_INTERVAL_MS = 24 * 60 * 60 * 1000;
@@ -49,6 +51,23 @@ function startBackupCron({ run }) {
       logger.error("Backup cron tick failed", { error: error.message });
     }
   };
+
+  // If configuration provides a cron expression, schedule with node-cron
+  const cronExpr = config?.schedules?.backupCron;
+  if (cronExpr) {
+    try {
+      const task = cron.schedule(cronExpr, () => {
+        tick().catch(err => logger.error('Backup tick failed', { error: err.message }));
+      }, { scheduled: true });
+
+      if (runOnStartup) setTimeout(() => tick(), startupDelayMs);
+
+      logger.info('Backup cron started (cron)', { cron: cronExpr, runOnStartup, startupDelayMs });
+      return { backupCronTask: task };
+    } catch (error) {
+      logger.error('Invalid backup cron expression, falling back to interval', { cronExpr, error: error.message });
+    }
+  }
 
   const startupTimer = runOnStartup
     ? setTimeout(() => {

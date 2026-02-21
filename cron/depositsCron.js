@@ -1,6 +1,8 @@
 const { ethers } = require("ethers");
 const walletModel = require("../models/walletModel");
 const logger = require("../utils/logger").child("DepositsCron");
+const cron = require('node-cron');
+const config = require('../src/config');
 
 const POLYGON_RPC_URL = process.env.POLYGON_RPC_URL || "https://poly.api.pocket.network";
 const POLYGON_RPC_TIMEOUT_MS = Number(process.env.POLYGON_RPC_TIMEOUT_MS || 4500);
@@ -111,17 +113,29 @@ async function checkPendingDeposits() {
 }
 
 function startDepositMonitoring() {
-  // Check pending deposits every 30 seconds
+  // If a cron expression is provided in config, use it (supports seconds field)
+  const cronExpr = config?.schedules?.depositsCron;
+  if (cronExpr) {
+    try {
+      const task = cron.schedule(cronExpr, () => {
+        checkPendingDeposits().catch(err => logger.error('Deposit check failed', { error: err.message }));
+      }, { scheduled: true });
+
+      // Run once on startup
+      checkPendingDeposits();
+
+      logger.info('Deposit monitoring started (cron)', { cron: cronExpr });
+      return { depositCronTask: task };
+    } catch (error) {
+      logger.error('Invalid deposit cron expression, falling back to interval', { cronExpr, error: error.message });
+    }
+  }
+
+  // Fallback: Check pending deposits every 30 seconds
   const interval = setInterval(checkPendingDeposits, 30000);
-  
-  // Run immediately on start
   checkPendingDeposits();
-  
-  logger.info("Deposit monitoring started", { intervalMs: 30000 });
-  
-  return {
-    depositMonitoringInterval: interval
-  };
+  logger.info('Deposit monitoring started', { intervalMs: 30000 });
+  return { depositMonitoringInterval: interval };
 }
 
 module.exports = {

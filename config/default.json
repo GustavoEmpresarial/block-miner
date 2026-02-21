@@ -1,0 +1,26 @@
+{
+  "faucet": {
+    "rewardMinerSlug": "faucet-1ghs",
+    "cooldownMs": 3600000
+  },
+  "withdraw": {
+    "min": 10,
+    "max": 1000000
+  },
+  "schedules": {
+    "depositsCron": "*/5 * * * *",
+    "withdrawsCron": "*/5 * * * *",
+    "backupCron": "0 3 * * *"
+  },
+  "admin": {
+    "adminEmails": "",
+    "nodeEnv": "development"
+  },
+  "wallet": {
+    "allowWithdrawToContracts": false,
+    "enableAutoPayouts": false
+  },
+  "ui": {
+    "showFaucetInShop": false
+  }
+}

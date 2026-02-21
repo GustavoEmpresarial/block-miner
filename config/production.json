@@ -1,0 +1,9 @@
+{
+  "admin": {
+    "nodeEnv": "production",
+    "adminEmails": ""
+  },
+  "ui": {
+    "showFaucetInShop": false
+  }
+}
