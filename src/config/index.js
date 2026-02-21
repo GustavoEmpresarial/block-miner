@@ -72,7 +72,15 @@ if (!cfg.withdraw.max) cfg.withdraw.max = 1000000;
 
 // Strict validation for sensitive values. In production we require certain secrets and paths.
 function failStartup(message) {
+  const help = [];
+  help.push('See README.md for configuration instructions: ./README.md');
+  help.push('Ensure your .env contains required secrets (do NOT commit .env).');
+  help.push('Examples:');
+  help.push('  PowerShell:  $env:DB_PATH = "./data/blockminer.db"');
+  help.push('  bash:        export DB_PATH=./data/blockminer.db');
+  help.push('To persist for your shell, add the above to your profile or use a .env file.');
   console.error("Configuration validation failed:", message);
+  console.error(help.join('\n'));
   throw new Error(message);
 }
 

@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "nodemon server.js",
     "start": "node server.js",
-    "backup": "node scripts/backup.js"
+    "backup": "node scripts/backup.js",
+    "install-hooks": "git config core.hooksPath .githooks || true"
   },
   "keywords": [],
   "author": "",

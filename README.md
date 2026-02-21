@@ -42,3 +42,14 @@ Security recommendations
 - Never commit secrets to `config/*.json`.
 - Keep `.env` out of git. Use a secure secret store in production.
 - CI will block changes that inject likely-secret strings into `config/*.json` (see `.github/workflows/config-guard.yml`).
+
+Local Git hooks
+
+You can enable a local pre-commit hook that blocks accidental commits containing secrets in `config/*.json`:
+
+```bash
+# run once per repo clone
+npm run install-hooks
+```
+
+This sets `core.hooksPath` to the repository's `.githooks` folder which includes a `pre-commit` script that scans `config/*.json` for suspicious patterns.
