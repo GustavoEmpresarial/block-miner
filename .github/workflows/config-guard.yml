@@ -1,0 +1,41 @@
+name: Config Guard
+
+on:
+  push:
+    paths:
+      - 'config/**'
+  pull_request:
+    paths:
+      - 'config/**'
+
+jobs:
+  scan-config:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Scan config files for secrets
+        run: |
+          set -e
+          FOUND=0
+          for f in config/*.json; do
+            if [ -f "$f" ]; then
+              # Look for common secret names or long hex strings
+              if grep -Ei "(PRIVATE|MNEMONIC|SECRET|KEY|PASSPHRASE)" "$f" >/dev/null; then
+                echo "Potential secret keywords found in $f"
+                FOUND=1
+              fi
+              if grep -Eo "0x[0-9a-fA-F]{40,}" "$f" >/dev/null; then
+                echo "Potential hex private key found in $f"
+                FOUND=1
+              fi
+              if grep -Eo "[0-9a-fA-F]{64,}" "$f" >/dev/null; then
+                echo "Potential long hex string found in $f"
+                FOUND=1
+              fi
+            fi
+          done
+          if [ "$FOUND" -ne 0 ]; then
+            echo "Secrets or suspicious patterns found in config files. Aborting." >&2
+            exit 1
+          fi
+          echo "Config scan passed."

@@ -70,4 +70,32 @@ if (!cfg.faucet.rewardMinerSlug) cfg.faucet.rewardMinerSlug = 'faucet-1ghs';
 if (!cfg.withdraw.min) cfg.withdraw.min = 10;
 if (!cfg.withdraw.max) cfg.withdraw.max = 1000000;
 
+// Strict validation for sensitive values. In production we require certain secrets and paths.
+function failStartup(message) {
+  console.error("Configuration validation failed:", message);
+  throw new Error(message);
+}
+
+const isProduction = String(process.env.NODE_ENV || cfg.admin?.nodeEnv || '').toLowerCase() === 'production';
+
+// Required secrets (always require DB path)
+const dbPath = process.env.DB_PATH || cfg.dbPath || null;
+if (!dbPath) {
+  failStartup('DB_PATH is not configured. Set DB_PATH in your .env');
+}
+
+// For production require admin emails and a withdrawal key (private key or mnemonic)
+if (isProduction) {
+  const adminEmails = String(process.env.ADMIN_EMAILS || cfg.admin?.adminEmails || '').trim();
+  if (!adminEmails) {
+    failStartup('ADMIN_EMAILS must be set in production (comma-separated)');
+  }
+
+  const hasPrivateKey = Boolean(String(process.env.WITHDRAWAL_PRIVATE_KEY || '').trim());
+  const hasMnemonic = Boolean(String(process.env.WITHDRAWAL_MNEMONIC || '').trim());
+  if (!hasPrivateKey && !hasMnemonic) {
+    failStartup('Either WITHDRAWAL_PRIVATE_KEY or WITHDRAWAL_MNEMONIC must be set in production');
+  }
+}
+
 module.exports = cfg;
