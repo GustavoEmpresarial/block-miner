@@ -4,7 +4,8 @@ const { createAuditLog } = require("../models/auditLogModel");
 const logger = require("../utils/logger").getLogger("WalletController");
 const { getAnonymizedRequestIp } = require("../utils/clientIp");
 const { allocateNonce, resetNonce } = require("../utils/nonceManager");
-
+const config = require("../src/config");
+ 
 const POLYGON_CHAIN_ID = Number(process.env.POLYGON_CHAIN_ID || 137);
 const POLYGON_RPC_URL = process.env.POLYGON_RPC_URL || "https://poly.api.pocket.network";
 const POLYGON_RPC_TIMEOUT_MS = Number(process.env.POLYGON_RPC_TIMEOUT_MS || 4500);
@@ -41,10 +42,10 @@ const WITHDRAWAL_PRIVATE_KEY = process.env.WITHDRAWAL_PRIVATE_KEY;
 const WITHDRAWAL_MNEMONIC = process.env.WITHDRAWAL_MNEMONIC;
 const CHECKIN_RECEIVER = process.env.CHECKIN_RECEIVER || "0x95EA8E99063A3EF1B95302aA1C5bE199653EEb13";
 
-const MIN_WITHDRAWAL = 10;
-const MAX_WITHDRAWAL = 1_000_000;
+const MIN_WITHDRAWAL = Number(config.withdraw?.min || 10);
+const MAX_WITHDRAWAL = Number(config.withdraw?.max || 1_000_000);
 
-const ALLOW_WITHDRAW_TO_CONTRACTS = String(process.env.ALLOW_WITHDRAW_TO_CONTRACTS || "").trim() === "1";
+const ALLOW_WITHDRAW_TO_CONTRACTS = Boolean(config.wallet?.allowWithdrawToContracts === true || String(process.env.ALLOW_WITHDRAW_TO_CONTRACTS || "").trim() === "1");
 
 
 function normalizeAmountInput(amountRaw) {
@@ -69,7 +70,7 @@ function validateWithdrawalInput(amountRaw, address) {
   const amount = normalizeAmountInput(amountRaw);
 
   if (amount < MIN_WITHDRAWAL) {
-    throw new Error("Minimum withdrawal amount is 10 POL");
+    throw new Error(`Minimum withdrawal amount is ${MIN_WITHDRAWAL} POL`);
   }
 
   if (amount > MAX_WITHDRAWAL) {

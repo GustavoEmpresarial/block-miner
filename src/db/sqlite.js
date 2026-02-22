@@ -1,5 +1,6 @@
 const path = require("path");
 const sqlite3 = require("sqlite3").verbose();
+const config = require('../config');
 
 const dbPath = process.env.DB_PATH || path.join(__dirname, "..", "..", "data", "blockminer.db");
 const db = new sqlite3.Database(dbPath);
@@ -302,7 +303,7 @@ async function initializeDatabase() {
     )
   `);
 
-  const faucetMinerSlug = "faucet-1ghs";
+  const faucetMinerSlug = config.faucet?.rewardMinerSlug || "faucet-1ghs";
   const faucetMinerName = "Faucet Miner";
   const faucetMinerImage = "/assets/machines/reward1.png";
   const faucetMinerRow = await get("SELECT id FROM miners WHERE slug = ?", [faucetMinerSlug]);
@@ -615,9 +616,10 @@ async function initializeDatabase() {
     const faucetMiner = await get("SELECT id FROM miners WHERE slug = ?", [faucetMinerSlug]);
     if (faucetMiner?.id) {
       const now = Date.now();
+      const cooldownMs = Number(config.faucet?.cooldownMs || 3600000);
       await run(
         "INSERT INTO faucet_rewards (miner_id, cooldown_ms, is_active, created_at, updated_at) VALUES (?, ?, 1, ?, ?)",
-        [faucetMiner.id, 3600000, now, now]
+        [faucetMiner.id, cooldownMs, now, now]
       );
     }
   }

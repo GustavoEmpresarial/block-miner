@@ -70,17 +70,31 @@ function formatDate(ms) {
 async function request(url, options = {}) {
   const method = options?.method || "GET";
   const csrf = getCookie("blockminer_csrf");
+  const adminToken = localStorage.getItem("adminToken");
+
+  const headers = {
+    "Content-Type": "application/json",
+    ...(isUnsafeMethod(method) && csrf ? { "X-CSRF-Token": csrf } : {}),
+    // Se houver token de admin, usa Authorization header
+    ...(adminToken ? { "Authorization": `Bearer ${adminToken}` } : {})
+  };
 
   const response = await fetch(url, {
-    headers: {
-      "Content-Type": "application/json",
-      ...(isUnsafeMethod(method) && csrf ? { "X-CSRF-Token": csrf } : {})
-    },
+    headers,
     credentials: "include",
     ...options
   });
 
   const data = await response.json().catch(() => ({}));
+  
+  // Se unauthorized, redireciona para login
+  if (response.status === 401 || response.status === 403) {
+    localStorage.removeItem("adminToken");
+    localStorage.removeItem("adminTokenExpiry");
+    window.location.href = "/admin/login";
+    return;
+  }
+
   if (!response.ok) {
     throw new Error(data?.message || "Request failed");
   }

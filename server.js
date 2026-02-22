@@ -18,13 +18,17 @@ const { createMachinesController } = require("./controllers/machinesController")
 const { createMachinesDeprecatedController } = require("./controllers/machinesDeprecatedController");
 const { createRacksController } = require("./controllers/racksController");
 const { createAdminController } = require("./controllers/adminController");
+const { createAdminAuthController } = require("./controllers/adminAuthController");
 const { createCheckinController } = require("./controllers/checkinController");
 const { requireAuth } = require("./middleware/auth");
 const { createRateLimiter } = require("./middleware/rateLimit");
 const { validateBody } = require("./middleware/validate");
 const { createCsrfMiddleware } = require("./middleware/csrf");
 const { createCspMiddleware } = require("./middleware/csp");
+const { createAdminAuthRouter } = require("./routes/admin-auth");
 const { requireAdmin } = require("./middleware/admin");
+const { adminPageAuth } = require("./middleware/adminPageAuth");
+const { requireAdminAuth } = require("./middleware/adminAuth");
 const { getUserById } = require("./models/userModel");
 const { verifyAccessToken } = require("./utils/authTokens");
 const { getOrCreateMinerProfile } = require("./models/minerProfileModel");
@@ -327,7 +331,13 @@ app.use(
   })
 );
 app.use("/public", express.static(path.join(__dirname, "public")));
-app.use("/admin", requireAuth, requireAdmin, express.static(path.join(__dirname, "admin")));
+// Admin login routes accessible without authentication
+app.get("/admin/login.html", (req, res) => res.sendFile(path.join(__dirname, "admin", "login.html")));
+app.get("/admin/login", (req, res) => res.sendFile(path.join(__dirname, "admin", "login.html")));
+app.get("/admin/login-styles.css", (req, res) => res.sendFile(path.join(__dirname, "admin", "login-styles.css")));
+app.get("/admin/login.js", (req, res) => res.sendFile(path.join(__dirname, "admin", "login.js")));
+// Admin dashboard with authentication required (uses admin JWT token)
+app.use("/admin", adminPageAuth, express.static(path.join(__dirname, "admin")));
 app.use(pagesRouter);
 
 // Import wallet router
@@ -346,6 +356,7 @@ app.get("/ptp/promote-:userId", ptpController.viewPromotePage);
 app.get("/ptp-r-:userId", ptpController.viewPromotePage);
 
 app.use("/api/auth", authRouter);
+app.use("/api/admin", adminAuthRouter);
 
 const healthController = createHealthController();
 const shopController = createShopController(io);
@@ -354,6 +365,8 @@ const machinesController = createMachinesController(io);
 const machinesDeprecatedController = createMachinesDeprecatedController();
 const racksController = createRacksController();
 const adminController = createAdminController();
+const adminAuthController = createAdminAuthController();
+const adminAuthRouter = createAdminAuthRouter(adminAuthController);
 const checkinController = createCheckinController({
   polygonRpcUrl: POLYGON_RPC_URL,
   polygonChainId: POLYGON_CHAIN_ID,
@@ -424,20 +437,20 @@ app.get("/api/health", healthController.health);
 app.get("/api/shop/miners", requireAuth, shopListLimiter, shopController.listMiners);
 app.post("/api/shop/purchase", requireAuth, shopLimiter, validateBody(purchaseSchema), shopController.purchaseMiner);
 
-app.get("/api/admin/stats", requireAuth, requireAdmin, adminLimiter, adminController.getStats);
-app.get("/api/admin/users", requireAuth, requireAdmin, adminLimiter, adminController.listRecentUsers);
-app.get("/api/admin/audit", requireAuth, requireAdmin, adminLimiter, adminController.listAuditLogs);
-app.put("/api/admin/users/:id/ban", requireAuth, requireAdmin, adminLimiter, adminController.setUserBan);
+app.get("/api/admin/stats", requireAdminAuth, adminLimiter, adminController.getStats);
+app.get("/api/admin/users", requireAdminAuth, adminLimiter, adminController.listRecentUsers);
+app.get("/api/admin/audit", requireAdminAuth, adminLimiter, adminController.listAuditLogs);
+app.put("/api/admin/users/:id/ban", requireAdminAuth, adminLimiter, adminController.setUserBan);
 
-app.get("/api/admin/miners", requireAuth, requireAdmin, adminLimiter, adminController.listMiners);
-app.post("/api/admin/miners", requireAuth, requireAdmin, adminLimiter, adminController.createMiner);
-app.put("/api/admin/miners/:id", requireAuth, requireAdmin, adminLimiter, adminController.updateMiner);
+app.get("/api/admin/miners", requireAdminAuth, adminLimiter, adminController.listMiners);
+app.post("/api/admin/miners", requireAdminAuth, adminLimiter, adminController.createMiner);
+app.put("/api/admin/miners/:id", requireAdminAuth, adminLimiter, adminController.updateMiner);
 
 // Manual withdrawal management
-app.get("/api/admin/withdrawals/pending", requireAuth, requireAdmin, adminLimiter, adminController.listPendingWithdrawals);
-app.post("/api/admin/withdrawals/:withdrawalId/approve", requireAuth, requireAdmin, adminLimiter, adminController.approveWithdrawal);
-app.post("/api/admin/withdrawals/:withdrawalId/reject", requireAuth, requireAdmin, adminLimiter, adminController.rejectWithdrawal);
-app.post("/api/admin/withdrawals/:withdrawalId/complete", requireAuth, requireAdmin, adminLimiter, adminController.completeWithdrawalManually);
+app.get("/api/admin/withdrawals/pending", requireAdminAuth, adminLimiter, adminController.listPendingWithdrawals);
+app.post("/api/admin/withdrawals/:withdrawalId/approve", requireAdminAuth, adminLimiter, adminController.approveWithdrawal);
+app.post("/api/admin/withdrawals/:withdrawalId/reject", requireAdminAuth, adminLimiter, adminController.rejectWithdrawal);
+app.post("/api/admin/withdrawals/:withdrawalId/complete", requireAdminAuth, adminLimiter, adminController.completeWithdrawalManually);
 
 app.get("/api/inventory", requireAuth, inventoryLimiter, inventoryController.listInventory);
 app.post(

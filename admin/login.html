@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>BlockMiner | Admin Login</title>
+  <link rel="stylesheet" href="/admin/login-styles.css" />
+</head>
+<body>
+  <div class="login-container">
+    <div class="login-card">
+      <div class="login-header">
+        <h1>BlockMiner Admin</h1>
+        <p>Acesso Administrativo</p>
+      </div>
+
+      <form id="loginForm" class="login-form">
+        <div class="form-group">
+          <label for="email">Email</label>
+          <input
+            type="email"
+            id="email"
+            name="email"
+            placeholder="seu@email.com"
+            required
+            autocomplete="email"
+          />
+        </div>
+
+        <div class="form-group">
+          <label for="securityCode">Código de Segurança</label>
+          <input
+            type="password"
+            id="securityCode"
+            name="securityCode"
+            placeholder="••••••••"
+            required
+            autocomplete="off"
+          />
+        </div>
+
+        <button type="submit" class="btn-login" id="submitBtn">
+          <span id="btnText">Entrar</span>
+          <span id="btnLoader" class="loader" style="display: none;"></span>
+        </button>
+
+        <div id="errorMessage" class="error-message" style="display: none;"></div>
+        <div id="successMessage" class="success-message" style="display: none;"></div>
+      </form>
+
+      <div class="login-footer">
+        <p>Ambiente seguro. Não compartilhe suas credenciais.</p>
+      </div>
+    </div>
+  </div>
+
+  <script src="/admin/login.js"></script>
+</body>
+</html>
