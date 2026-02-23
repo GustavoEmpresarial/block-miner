@@ -724,6 +724,8 @@ async function persistMinerProfile(miner) {
       now
     ]
   );
+
+  await run("UPDATE users SET pol_balance = ? WHERE id = ?", [miner.balance, miner.userId]);
 }
 
 async function syncEngineMiners() {
@@ -736,24 +738,26 @@ async function syncEngineMiners() {
       continue;
     }
 
-    const miner = engine.createOrGetMiner({
-      userId: profile.user_id,
-      username: profile.username,
-      walletAddress: profile.wallet_address,
-      profile: {
-        rigs: profile.rigs,
-        baseHashRate: profile.base_hash_rate,
-        balance: profile.balance,
-        lifetimeMined: profile.lifetime_mined
-      }
-    });
+    const existingMiner = engine.findMinerByUserId(profile.user_id);
+    if (!existingMiner) {
+      engine.createOrGetMiner({
+        userId: profile.user_id,
+        username: profile.username,
+        walletAddress: profile.wallet_address,
+        profile: {
+          rigs: profile.rigs,
+          baseHashRate: profile.base_hash_rate,
+          balance: profile.balance,
+          lifetimeMined: profile.lifetime_mined
+        }
+      });
+      continue;
+    }
 
-    miner.username = profile.username || miner.username;
-    miner.walletAddress = profile.wallet_address || null;
-    miner.rigs = Number(profile.rigs || 1);
-    miner.baseHashRate = Number(profile.base_hash_rate || 0);
-    miner.balance = Number(profile.balance || 0);
-    miner.lifetimeMined = Number(profile.lifetime_mined || 0);
+    existingMiner.username = profile.username || existingMiner.username;
+    existingMiner.walletAddress = profile.wallet_address || null;
+    existingMiner.rigs = Number(profile.rigs || 1);
+    existingMiner.baseHashRate = Number(profile.base_hash_rate || 0);
   }
 }
 

@@ -17,7 +17,7 @@ const ZERADS_OFFERWALL_URL_TEMPLATE = String(
   process.env.ZERADS_OFFERWALL_URL_TEMPLATE || "https://zerads.com/?ref={siteId}&user={username}"
 ).trim();
 const ZERADS_USER_TOKEN_SECRET = String(process.env.ZERADS_USER_TOKEN_SECRET || process.env.JWT_SECRET || "zerads-secret");
-const CALLBACK_BUCKET_MS = 5 * 60 * 1000;
+const FALLBACK_DUPLICATE_BUCKET_MS = 15 * 1000;
 
 function normalizeIp(value) {
   const raw = String(value || "").trim();
@@ -88,8 +88,67 @@ function getRequestValue(req, names = []) {
   return "";
 }
 
-function buildCallbackHash({ username, amount, clicks, requestIp, bucket }) {
-  const raw = `${username}|${amount}|${clicks}|${requestIp}|${bucket}`;
+function getRequestEntries(req) {
+  const entries = [];
+  const appendEntries = (source) => {
+    if (!source || typeof source !== "object") {
+      return;
+    }
+
+    for (const [key, value] of Object.entries(source)) {
+      const safeKey = String(key || "").trim();
+      if (!safeKey) {
+        continue;
+      }
+
+      if (safeKey.toLowerCase() === "pwd" || safeKey.toLowerCase() === "password" || safeKey.toLowerCase() === "pass") {
+        continue;
+      }
+
+      if (Array.isArray(value)) {
+        value.forEach((item) => {
+          entries.push([safeKey, String(item ?? "").trim()]);
+        });
+      } else {
+        entries.push([safeKey, String(value ?? "").trim()]);
+      }
+    }
+  };
+
+  appendEntries(req.query);
+  appendEntries(req.body);
+
+  entries.sort((a, b) => {
+    if (a[0] === b[0]) {
+      return a[1].localeCompare(b[1]);
+    }
+    return a[0].localeCompare(b[0]);
+  });
+
+  return entries;
+}
+
+function getExternalCallbackId(req) {
+  const externalId = getRequestValue(req, [
+    "callback_id",
+    "transaction_id",
+    "txid",
+    "trans_id",
+    "click_id",
+    "cid",
+    "subid"
+  ]);
+  return String(externalId || "").trim();
+}
+
+function buildRequestFingerprint(req) {
+  const entries = getRequestEntries(req);
+  const raw = entries.map(([key, value]) => `${key}=${value}`).join("&");
+  return crypto.createHash("sha256").update(raw).digest("hex");
+}
+
+function buildCallbackHash({ username, amount, clicks, requestIp, duplicateKey }) {
+  const raw = `${username}|${amount}|${clicks}|${requestIp}|${duplicateKey}`;
   return crypto.createHash("sha256").update(raw).digest("hex");
 }
 
@@ -287,13 +346,18 @@ async function handlePtcCallback(req, res) {
   }
 
   const payoutAmount = toFixedNumber(amount * ZERADS_PTC_EXCHANGE_RATE, 8);
-  const bucket = Math.floor(Date.now() / CALLBACK_BUCKET_MS);
+  const externalCallbackId = getExternalCallbackId(req);
+  const requestFingerprint = buildRequestFingerprint(req);
+  const fallbackBucket = Math.floor(Date.now() / FALLBACK_DUPLICATE_BUCKET_MS);
+  const duplicateKey = externalCallbackId
+    ? `ext:${externalCallbackId.toLowerCase()}`
+    : `req:${requestFingerprint}:${fallbackBucket}`;
   const callbackHash = buildCallbackHash({
     username: normalizedUser,
     amount: toFixedNumber(amount, 8),
     clicks,
     requestIp,
-    bucket
+    duplicateKey
   });
 
   await run("BEGIN IMMEDIATE");

@@ -52,6 +52,8 @@ const state = {
   isConnecting: false  // Prevent multiple connection attempts
 };
 
+let balanceAutoRefreshTimer = null;
+
 // Helper Functions
 function getToken() {
   return "cookie-session";
@@ -645,6 +647,14 @@ async function init() {
   await loadTransactionHistory();
   
   updateWithdrawSummary();
+
+  if (balanceAutoRefreshTimer) {
+    clearInterval(balanceAutoRefreshTimer);
+  }
+
+  balanceAutoRefreshTimer = setInterval(() => {
+    loadBalance();
+  }, 15000);
 }
 
 // Start when DOM is ready

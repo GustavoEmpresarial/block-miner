@@ -161,5 +161,5 @@ document.addEventListener("DOMContentLoaded", () => {
 
   setInterval(() => {
     loadStats();
-  }, 30000);
+  }, 10000);
 });

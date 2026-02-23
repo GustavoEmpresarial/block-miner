@@ -3,9 +3,15 @@ const { db, run, get } = require("../src/db/sqlite");
 // Get user balance and wallet info
 async function getUserBalance(userId) {
   const query = `
-    SELECT balance, lifetime_mined, total_withdrawn, wallet_address
-    FROM users_temp_power
-    WHERE user_id = ?
+    SELECT
+      COALESCE(utp.balance, u.pol_balance, 0) AS balance,
+      COALESCE(utp.lifetime_mined, 0) AS lifetime_mined,
+      COALESCE(utp.total_withdrawn, 0) AS total_withdrawn,
+      COALESCE(utp.wallet_address, uw.wallet_address, NULL) AS wallet_address
+    FROM users u
+    LEFT JOIN users_temp_power utp ON utp.user_id = u.id
+    LEFT JOIN users_wallets uw ON uw.user_id = u.id
+    WHERE u.id = ?
   `;
   
   const profile = await get(query, [userId]);
@@ -104,6 +110,8 @@ async function createWithdrawal(userId, amount, address) {
     `;
     const result = await run(insertQuery, [userId, "withdrawal", amount, address, "pending", 1, now, now]);
 
+    await run("UPDATE users SET pol_balance = pol_balance - ? WHERE id = ?", [amount, userId]);
+
     await run("COMMIT");
 
     return {
@@ -193,6 +201,7 @@ async function updateTransactionStatus(transactionId, status, txHash = null) {
         if (!reserved) {
           // Legacy rows (created before funds reservation) still need balance deduction on completion.
           await run("UPDATE users_temp_power SET balance = balance - ? WHERE user_id = ?", [amount, userId]);
+          await run("UPDATE users SET pol_balance = pol_balance - ? WHERE id = ?", [amount, userId]);
         }
         await run("UPDATE users_temp_power SET total_withdrawn = total_withdrawn + ? WHERE user_id = ?", [amount, userId]);
         await run("UPDATE transactions SET funds_reserved = 0, updated_at = ? WHERE id = ?", [now, transactionId]);
@@ -202,6 +211,7 @@ async function updateTransactionStatus(transactionId, status, txHash = null) {
         // Only refund if already reserved and not completed
         if (reserved) {
           await run("UPDATE users_temp_power SET balance = balance + ? WHERE user_id = ?", [amount, userId]);
+          await run("UPDATE users SET pol_balance = pol_balance + ? WHERE id = ?", [amount, userId]);
           await run("UPDATE transactions SET funds_reserved = 0, updated_at = ? WHERE id = ?", [now, transactionId]);
         }
       }
@@ -407,8 +417,14 @@ async function creditBalance(userId, amount) {
   
   return new Promise((resolve, reject) => {
     db.run(query, [amount, amount, userId], function(err) {
-      if (err) reject(err);
-      else resolve({ changes: this.changes });
+      if (err) {
+        reject(err);
+        return;
+      }
+
+      run("UPDATE users SET pol_balance = pol_balance + ? WHERE id = ?", [amount, userId])
+        .then(() => resolve({ changes: this.changes }))
+        .catch(reject);
     });
   });
 }
