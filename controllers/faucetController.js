@@ -6,9 +6,19 @@ const { getBrazilCheckinDateKey } = require("../utils/checkinDate");
 const DEFAULT_FAUCET_COOLDOWN_MS = 60 * 60 * 1000;
 
 async function getActiveReward() {
-  const reward = await get(
-    "SELECT id, miner_id, cooldown_ms FROM faucet_rewards WHERE is_active = 1 ORDER BY id DESC LIMIT 1"
-  );
+  let reward = null;
+  try {
+    reward = await get(
+      "SELECT id, miner_id, cooldown_ms FROM faucet_rewards WHERE is_active = 1 ORDER BY id DESC LIMIT 1"
+    );
+  } catch (error) {
+    if (String(error?.message || "").includes("no such column: cooldown_ms")) {
+      reward = await get("SELECT id, miner_id FROM faucet_rewards WHERE is_active = 1 ORDER BY id DESC LIMIT 1");
+    } else {
+      throw error;
+    }
+  }
+
   if (!reward?.miner_id) {
     return null;
   }

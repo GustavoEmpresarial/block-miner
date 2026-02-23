@@ -1,6 +1,7 @@
 const jwt = require("jsonwebtoken");
 const crypto = require("crypto");
 const logger = require("../utils/logger").child("AdminAuthController");
+const { ADMIN_SESSION_COOKIE } = require("../utils/token");
 
 function timingSafeStringEqual(a, b) {
   const left = Buffer.from(String(a || ""), "utf8");
@@ -18,6 +19,21 @@ function createAdminAuthController() {
   const ADMIN_SECURITY_CODE = String(process.env.ADMIN_SECURITY_CODE || "").trim();
   const JWT_SECRET = process.env.JWT_SECRET;
   const JWT_EXPIRES_IN = process.env.ADMIN_JWT_EXPIRES_IN || "24h";
+
+  function buildAdminCookie(token) {
+    const parts = [
+      `${ADMIN_SESSION_COOKIE}=${encodeURIComponent(token)}`,
+      "Path=/",
+      "HttpOnly",
+      "SameSite=Strict"
+    ];
+
+    if (process.env.NODE_ENV === "production") {
+      parts.push("Secure");
+    }
+
+    return parts.join("; ");
+  }
 
   // Validar configuração
   if (!ADMIN_EMAIL || !ADMIN_SECURITY_CODE) {
@@ -121,6 +137,8 @@ function createAdminAuthController() {
         userAgent: req.get("user-agent"),
         expiresIn: JWT_EXPIRES_IN
       });
+
+      res.setHeader("Set-Cookie", buildAdminCookie(token));
 
       // Retornar token (pode ser salvo em localStorage ou cookie)
       return res.json({

@@ -28,6 +28,11 @@ function isUnsafeMethod(method) {
   return m !== "GET" && m !== "HEAD" && m !== "OPTIONS";
 }
 
+function isCsrfExemptPath(pathname) {
+  const path = String(pathname || "").split("?")[0];
+  return path === "/api/admin/login";
+}
+
 function buildCsrfCookie(token) {
   const parts = [
     `${CSRF_COOKIE_NAME}=${encodeURIComponent(token)}`,
@@ -82,7 +87,12 @@ function createCsrfMiddleware({
 
     // Enforce CSRF only for unsafe requests authenticated via cookies.
     // If Authorization: Bearer is present, CSRF is not required (cross-site requests cannot set it).
-    if (!hasAuthCookie || !isUnsafeMethod(req.method) || hasBearerAuth(req)) {
+    if (
+      !hasAuthCookie ||
+      !isUnsafeMethod(req.method) ||
+      hasBearerAuth(req) ||
+      isCsrfExemptPath(req.path || req.originalUrl)
+    ) {
       res.locals.csrfToken = csrfCookie;
       next();
       return;

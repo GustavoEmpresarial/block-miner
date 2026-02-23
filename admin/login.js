@@ -7,6 +7,25 @@ const btnLoader = document.getElementById("btnLoader");
 const errorMessage = document.getElementById("errorMessage");
 const successMessage = document.getElementById("successMessage");
 
+function getCookie(name) {
+  return document.cookie
+    .split(";")
+    .map((part) => part.trim())
+    .filter(Boolean)
+    .reduce((found, part) => {
+      if (found !== null) {
+        return found;
+      }
+
+      const [key, ...raw] = part.split("=");
+      if (key !== name) {
+        return null;
+      }
+
+      return decodeURIComponent(raw.join("="));
+    }, null);
+}
+
 function showError(message) {
   errorMessage.textContent = message;
   errorMessage.style.display = "block";
@@ -55,10 +74,13 @@ loginForm.addEventListener("submit", async (e) => {
   setLoading(true);
 
   try {
+    const csrf = getCookie("blockminer_csrf");
+
     const response = await fetch("/api/admin/login", {
       method: "POST",
       headers: {
-        "Content-Type": "application/json"
+        "Content-Type": "application/json",
+        ...(csrf ? { "X-CSRF-Token": csrf } : {})
       },
       body: JSON.stringify({
         email,

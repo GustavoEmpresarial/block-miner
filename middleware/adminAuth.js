@@ -1,5 +1,5 @@
 const jwt = require("jsonwebtoken");
-const { getTokenFromRequest } = require("../utils/token");
+const { getAdminTokenFromRequest } = require("../utils/token");
 const logger = require("../utils/logger").child("AdminAuthMiddleware");
 
 function requireAdminAuth(req, res, next) {
@@ -10,7 +10,7 @@ function requireAdminAuth(req, res, next) {
       return res.status(503).json({ ok: false, message: "Admin auth unavailable." });
     }
 
-    const token = getTokenFromRequest(req);
+    const token = getAdminTokenFromRequest(req);
 
     if (!token) {
       return res.status(401).json({ ok: false, message: "Admin session invalid." });

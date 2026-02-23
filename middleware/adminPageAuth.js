@@ -1,4 +1,4 @@
-const { getTokenFromRequest } = require("../utils/token");
+const { getAdminTokenFromRequest } = require("../utils/token");
 const jwt = require("jsonwebtoken");
 const logger = require("../utils/logger").child("AdminPageAuth");
 
@@ -11,7 +11,7 @@ function adminPageAuth(req, res, next) {
       return;
     }
 
-    const token = getTokenFromRequest(req);
+    const token = getAdminTokenFromRequest(req);
 
     if (!token) {
       // Sem token de admin, redireciona para login
