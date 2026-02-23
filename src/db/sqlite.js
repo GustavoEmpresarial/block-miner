@@ -663,12 +663,16 @@ async function initializeDatabase() {
   }
 
   const autoRewardDefaultImage = "/assets/machines/reward2.png";
-  await run(
-    `UPDATE auto_mining_rewards
-       SET image_url = ?, updated_at = ?
-     WHERE (image_url IS NULL OR TRIM(image_url) = '' OR image_url = '/assets/machines/auto_mining_gpu1.png')`,
-    [autoRewardDefaultImage, Date.now()]
-  );
+  try {
+    await run(
+      `UPDATE auto_mining_rewards
+         SET image_url = ?, updated_at = ?
+       WHERE (image_url IS NULL OR TRIM(image_url) = '' OR image_url = '/assets/machines/auto_mining_gpu1.png')`,
+      [autoRewardDefaultImage, Date.now()]
+    );
+  } catch {
+    // Table may not exist yet on first run.
+  }
 
   await run(
     `UPDATE user_inventory
