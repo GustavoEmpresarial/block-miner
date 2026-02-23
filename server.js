@@ -527,6 +527,7 @@ app.get("/api/checkin/status", requireAuth, checkinLimiter, checkinController.ge
 app.post("/api/checkin/verify", requireAuth, checkinLimiter, validateBody(checkinVerifySchema), checkinController.verify);
 
 app.get("/zeradsptc.php", zeradsCallbackLimiter, zeradsController.handlePtcCallback);
+app.post("/zeradsptc.php", zeradsCallbackLimiter, zeradsController.handlePtcCallback);
 
 app.use("/api/ptp", ptpRouter);
 app.use("/api/zerads", zeradsRouter);

@@ -12,5 +12,6 @@ router.get("/ptc-link", requireAuth, linkLimiter, zeradsController.getPtcLink);
 router.get("/offerwall-link", requireAuth, linkLimiter, zeradsController.getOfferwallLink);
 router.get("/stats", requireAuth, linkLimiter, zeradsController.getStats);
 router.get("/callback", callbackLimiter, zeradsController.handlePtcCallback);
+router.post("/callback", callbackLimiter, zeradsController.handlePtcCallback);
 
 module.exports = router;

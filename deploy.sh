@@ -98,6 +98,22 @@ if [ -z "$CORS_ORIGINS" ]; then
     fi
 fi
 
+if [ -z "$ZERADS_CALLBACK_PASSWORD" ] || [ "$ZERADS_CALLBACK_PASSWORD" = "password" ]; then
+    echo -e "${YELLOW}⚠️  ZERADS_CALLBACK_PASSWORD is default/empty (callbacks can fail or be insecure)${NC}"
+    read -p "Continue anyway? (y/n): " continue
+    if [ "$continue" != "y" ]; then
+        exit 1
+    fi
+fi
+
+if [ -z "$ZERADS_PTC_EXCHANGE_RATE" ] || [ "$ZERADS_PTC_EXCHANGE_RATE" = "0" ]; then
+    echo -e "${YELLOW}⚠️  ZERADS_PTC_EXCHANGE_RATE is 0 (USDC rewards will stay 0.00000000)${NC}"
+    read -p "Continue anyway? (y/n): " continue
+    if [ "$continue" != "y" ]; then
+        exit 1
+    fi
+fi
+
 echo -e "${GREEN}✅ Environment variables OK${NC}"
 echo ""
 

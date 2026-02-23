@@ -5,7 +5,7 @@ const logger = require("../utils/logger").child("ZerAdsController");
 const ZERADS_SITE_ID = String(process.env.ZERADS_SITE_ID || "10776").trim();
 const ZERADS_CALLBACK_PASSWORD = String(process.env.ZERADS_CALLBACK_PASSWORD || "password");
 const ZERADS_ALLOWED_IPS = new Set(
-  String(process.env.ZERADS_ALLOWED_IPS || "162.0.208.108")
+  String(process.env.ZERADS_ALLOWED_IPS || "")
     .split(",")
     .map((value) => normalizeIp(value))
     .filter(Boolean)
@@ -33,7 +33,59 @@ function normalizeIp(value) {
 }
 
 function getRequestIp(req) {
-  return normalizeIp(req.ip || req.socket?.remoteAddress || "");
+  const ips = getRequestIps(req);
+  return ips[0] || "";
+}
+
+function getRequestIps(req) {
+  const ips = [];
+  const appendIp = (value) => {
+    const normalized = normalizeIp(value);
+    if (!normalized || ips.includes(normalized)) {
+      return;
+    }
+    ips.push(normalized);
+  };
+
+  appendIp(req.ip);
+  appendIp(req.socket?.remoteAddress);
+
+  const forwardedFor = req.headers?.["x-forwarded-for"];
+  if (typeof forwardedFor === "string") {
+    forwardedFor
+      .split(",")
+      .map((value) => value.trim())
+      .filter(Boolean)
+      .forEach(appendIp);
+  } else if (Array.isArray(forwardedFor)) {
+    forwardedFor
+      .flatMap((item) => String(item || "").split(","))
+      .map((value) => value.trim())
+      .filter(Boolean)
+      .forEach(appendIp);
+  }
+
+  return ips;
+}
+
+function getRequestValue(req, names = []) {
+  for (const name of names) {
+    if (!name) {
+      continue;
+    }
+
+    const queryValue = req.query?.[name];
+    if (queryValue !== undefined && queryValue !== null && String(queryValue).trim() !== "") {
+      return String(queryValue).trim();
+    }
+
+    const bodyValue = req.body?.[name];
+    if (bodyValue !== undefined && bodyValue !== null && String(bodyValue).trim() !== "") {
+      return String(bodyValue).trim();
+    }
+  }
+
+  return "";
 }
 
 function buildCallbackHash({ username, amount, clicks, requestIp, bucket }) {
@@ -187,12 +239,13 @@ async function getOfferwallLink(req, res) {
 }
 
 async function handlePtcCallback(req, res) {
+  const requestIps = getRequestIps(req);
   const requestIp = getRequestIp(req);
-  const receivedPassword = String(req.query?.pwd || "");
-  const rawUser = String(req.query?.user || "").trim();
+  const receivedPassword = getRequestValue(req, ["pwd", "password", "pass"]);
+  const rawUser = getRequestValue(req, ["user", "username", "uid", "userid"]);
   const normalizedUser = normalizeUsername(rawUser);
-  const amount = Number(req.query?.amount);
-  const clicks = parseClicks(req.query?.clicks, amount);
+  const amount = Number(getRequestValue(req, ["amount", "reward", "value", "payout", "earnings"]));
+  const clicks = parseClicks(getRequestValue(req, ["clicks", "click", "total_clicks"]), amount);
 
   if (!receivedPassword || receivedPassword !== ZERADS_CALLBACK_PASSWORD) {
     logger.warn("Rejected ZerAds callback by password", { requestIp, user: normalizedUser || null });
@@ -210,8 +263,8 @@ async function handlePtcCallback(req, res) {
     return;
   }
 
-  if (ZERADS_ALLOWED_IPS.size > 0 && !ZERADS_ALLOWED_IPS.has(requestIp)) {
-    logger.warn("Rejected ZerAds callback by IP", { requestIp, user: normalizedUser });
+  if (ZERADS_ALLOWED_IPS.size > 0 && !requestIps.some((ip) => ZERADS_ALLOWED_IPS.has(ip))) {
+    logger.warn("Rejected ZerAds callback by IP", { requestIp, requestIps, user: normalizedUser });
     res.status(403).send("forbidden_ip");
     return;
   }
