@@ -106,10 +106,53 @@ async function loadNetworkStats() {
 
     await updateEstimatedReward();
     await loadMiningRewards();
+    await loadPowerRanking();
 
     if (statusEl) statusEl.textContent = "Updated just now.";
   } catch {
     if (statusEl) statusEl.textContent = "Failed to load stats.";
+  }
+}
+
+async function loadPowerRanking() {
+  const container = document.getElementById("powerRankingContainer");
+  if (!container) return;
+
+  try {
+    const response = await fetch("/api/network-ranking?limit=20");
+    if (!response.ok) {
+      container.innerHTML = '<p class="text-muted">Unable to load ranking...</p>';
+      return;
+    }
+
+    const data = await response.json();
+    if (!data.ok || !Array.isArray(data.ranking) || data.ranking.length === 0) {
+      container.innerHTML = '<p class="text-muted text-center">No active miners in ranking yet.</p>';
+      return;
+    }
+
+    const rankingHTML = data.ranking.map((entry) => `
+      <div class="reward-item">
+        <div class="reward-header">
+          <span class="reward-block">#${entry.rank} ${entry.username}</span>
+          <span class="reward-time">${formatHashrate(entry.totalHashRate)}</span>
+        </div>
+        <div class="reward-details">
+          <div class="reward-row">
+            <span class="label">Mining Room:</span>
+            <span class="value">${formatHashrate(entry.baseHashRate)}</span>
+          </div>
+          <div class="reward-row">
+            <span class="label">Active Games (24h / 7d):</span>
+            <span class="value">${formatHashrate(entry.gameHashRate)}</span>
+          </div>
+        </div>
+      </div>
+    `).join("");
+
+    container.innerHTML = rankingHTML;
+  } catch {
+    container.innerHTML = '<p class="text-muted">Failed to load ranking</p>';
   }
 }
 

@@ -58,7 +58,7 @@ const server = http.createServer(app);
 const io = new Server(server);
 const engine = new MiningEngine();
 engine.setRewardLogger(logMiningReward); // Register reward logging callback
-const publicStateService = createPublicStateService({ engine, get, run });
+const publicStateService = createPublicStateService({ engine, get, run, all });
 
 const CHECKIN_RECEIVER = process.env.CHECKIN_RECEIVER || "0x95EA8E99063A3EF1B95302aA1C5bE199653EEb13";
 const CHECKIN_AMOUNT_WEI = BigInt(process.env.CHECKIN_AMOUNT_WEI || "10000000000000000");
@@ -598,6 +598,21 @@ app.get("/api/network-stats", async (_req, res) => {
     });
   } catch {
     res.status(500).json({ ok: false, message: "Unable to load network stats." });
+  }
+});
+
+app.get("/api/network-ranking", async (req, res) => {
+  try {
+    const limitRaw = Number(req.query?.limit || 20);
+    const limit = Number.isFinite(limitRaw) ? limitRaw : 20;
+    const ranking = await publicStateService.getNetworkPowerRanking(limit);
+
+    res.json({
+      ok: true,
+      ranking
+    });
+  } catch {
+    res.status(500).json({ ok: false, message: "Unable to load network ranking." });
   }
 });
 
