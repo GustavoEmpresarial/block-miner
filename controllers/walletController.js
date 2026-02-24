@@ -740,7 +740,7 @@ async function getMiningRewards(req, res) {
     const userId = req.user.id;
     const { get, all } = require("../src/db/sqlite");
 
-    // Get last 20 mining rewards for this user
+    // Get last 3 mining rewards for this user
     const rewards = await all(
       `
         SELECT
@@ -755,7 +755,7 @@ async function getMiningRewards(req, res) {
         FROM mining_rewards_log
         WHERE user_id = ?
         ORDER BY created_at DESC
-        LIMIT 20
+        LIMIT 3
       `,
       [userId]
     );

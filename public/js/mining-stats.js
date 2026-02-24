@@ -133,7 +133,9 @@ async function loadMiningRewards() {
       return;
     }
 
-    const rewardsHTML = data.rewards.map((reward) => {
+    const latestRewards = data.rewards.slice(0, 3);
+
+    const rewardsHTML = latestRewards.map((reward) => {
       const date = new Date(reward.createdAt);
       const timeAgo = getTimeAgo(reward.timestamp);
       

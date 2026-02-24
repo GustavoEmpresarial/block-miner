@@ -697,6 +697,55 @@ async function getOrCreateGame(slug, name) {
   return { id: insert.lastID, name, slug };
 }
 
+async function restoreMiningEngineState() {
+  try {
+    const maxBlockRow = await get("SELECT COALESCE(MAX(block_number), 0) AS max_block FROM mining_rewards_log");
+    const totalMintedRow = await get("SELECT COALESCE(SUM(reward_amount), 0) AS total_minted FROM mining_rewards_log");
+    const recentBlocks = await all(
+      `
+        SELECT
+          block_number,
+          COALESCE(SUM(reward_amount), 0) AS reward,
+          COUNT(DISTINCT user_id) AS miner_count,
+          MAX(created_at) AS timestamp
+        FROM mining_rewards_log
+        GROUP BY block_number
+        ORDER BY block_number DESC
+        LIMIT 12
+      `
+    );
+
+    const maxBlock = Number(maxBlockRow?.max_block || 0);
+    const restoredBlockNumber = Math.max(1, maxBlock + 1);
+    engine.blockNumber = restoredBlockNumber;
+
+    engine.totalMinted = Number(totalMintedRow?.total_minted || 0);
+
+    engine.blockHistory = recentBlocks.map((block) => ({
+      blockNumber: Number(block.block_number || 0),
+      reward: Number(block.reward || 0),
+      minerCount: Number(block.miner_count || 0),
+      timestamp: Number(block.timestamp || Date.now())
+    }));
+
+    if (engine.blockHistory.length > 0) {
+      const latestBlock = engine.blockHistory[0];
+      engine.lastReward = Number(latestBlock.reward || 0);
+      engine.lastBlockAt = Number(latestBlock.timestamp || Date.now());
+    }
+
+    logger.info("Mining engine state restored", {
+      blockNumber: engine.blockNumber,
+      totalMinted: engine.totalMinted,
+      restoredHistory: engine.blockHistory.length
+    });
+  } catch (error) {
+    logger.warn("Failed to restore mining engine state; using in-memory defaults", {
+      error: error.message
+    });
+  }
+}
+
 async function persistMinerProfile(miner) {
   if (!miner?.userId) {
     return;
@@ -825,6 +874,8 @@ function getLocalIpv4Addresses() {
 
 initializeDatabase()
   .then(async () => {
+    await restoreMiningEngineState();
+
     try {
       const result = await walletModel.failAllPendingWithdrawals();
       if (result.totalPending > 0) {
