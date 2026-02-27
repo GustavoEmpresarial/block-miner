@@ -38,7 +38,8 @@ function getIntervalMs() {
 }
 
 async function runFullSiteBackupOnStartup() {
-  const enabled = parseBoolean(process.env.BACKUP_FULL_SITE_ON_STARTUP, true);
+  const defaultEnabled = process.env.NODE_ENV === "production";
+  const enabled = parseBoolean(process.env.BACKUP_FULL_SITE_ON_STARTUP, defaultEnabled);
   if (!enabled) {
     logger.info("Full site backup on startup disabled");
     return;
@@ -96,7 +97,8 @@ function startBackupCron({ run }) {
     return {};
   }
 
-  const runOnStartup = parseBoolean(process.env.BACKUP_RUN_ON_STARTUP, true);
+  const defaultRunOnStartup = process.env.NODE_ENV === "production";
+  const runOnStartup = parseBoolean(process.env.BACKUP_RUN_ON_STARTUP, defaultRunOnStartup);
 
   const startupDelayMs = Math.max(0, parseNumber(process.env.BACKUP_STARTUP_DELAY_MS, DEFAULT_STARTUP_DELAY_MS));
   const intervalMs = getIntervalMs();

@@ -19,6 +19,12 @@ const logger = require("../utils/logger").child("AuthRoutes");
 
 const authRouter = express.Router();
 
+const WELCOME_MINER_SLUG = "welcome-10ghs";
+const WELCOME_MINER_NAME = "Welcome Miner";
+const WELCOME_MINER_HASH_RATE = 10;
+const WELCOME_MINER_SLOT_SIZE = 1;
+const WELCOME_MINER_IMAGE_URL = "/assets/machines/reward1.png";
+
 function parseIntOr(value, fallback) {
   const parsed = Number.parseInt(String(value), 10);
   return Number.isFinite(parsed) ? parsed : fallback;
@@ -199,6 +205,54 @@ async function ensureUserRefCode(userId) {
   return refCode;
 }
 
+async function ensureWelcomeMiner() {
+  const existing = await getMinerBySlug(WELCOME_MINER_SLUG);
+  const now = Date.now();
+
+  if (!existing) {
+    await run(
+      "INSERT INTO miners (name, slug, base_hash_rate, price, slot_size, image_url, is_active, show_in_shop, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+      [
+        WELCOME_MINER_NAME,
+        WELCOME_MINER_SLUG,
+        WELCOME_MINER_HASH_RATE,
+        0,
+        WELCOME_MINER_SLOT_SIZE,
+        WELCOME_MINER_IMAGE_URL,
+        1,
+        0,
+        now
+      ]
+    );
+    return getMinerBySlug(WELCOME_MINER_SLUG);
+  }
+
+  const needsUpdate =
+    Number(existing.base_hash_rate || 0) !== WELCOME_MINER_HASH_RATE ||
+    Number(existing.slot_size || 0) !== WELCOME_MINER_SLOT_SIZE ||
+    Number(existing.is_active || 0) !== 1 ||
+    Number(existing.show_in_shop || 1) !== 0;
+
+  if (needsUpdate) {
+    await run(
+      "UPDATE miners SET name = ?, base_hash_rate = ?, price = ?, slot_size = ?, image_url = ?, is_active = ?, show_in_shop = ? WHERE id = ?",
+      [
+        WELCOME_MINER_NAME,
+        WELCOME_MINER_HASH_RATE,
+        0,
+        WELCOME_MINER_SLOT_SIZE,
+        WELCOME_MINER_IMAGE_URL,
+        1,
+        0,
+        existing.id
+      ]
+    );
+    return getMinerBySlug(WELCOME_MINER_SLUG);
+  }
+
+  return existing;
+}
+
 const registerSchema = z
   .object({
     username: z.string().trim().min(3).max(24).regex(/^[a-zA-Z0-9._-]+$/).optional(),
@@ -261,34 +315,47 @@ authRouter.post("/register", authLimiter, validateBody(registerSchema), async (r
       }
     }
 
-    const insertResult = await run(
-      "INSERT INTO users (name, username, email, password_hash, created_at, ref_code, referred_by) VALUES (?, ?, ?, ?, ?, ?, ?)",
-      [username, username, email, passwordHash, createdAt, refCode, referredBy]
-    );
+    let newUserId = null;
+    await run("BEGIN TRANSACTION");
+    try {
+      const insertResult = await run(
+        "INSERT INTO users (name, username, email, password_hash, created_at, ref_code, referred_by) VALUES (?, ?, ?, ?, ?, ?, ?)",
+        [username, username, email, passwordHash, createdAt, refCode, referredBy]
+      );
+      newUserId = insertResult.lastID;
 
-    if (referredBy) {
-      await createReferral(referredBy, insertResult.lastID);
-
-      const atlasMiner = await getMinerBySlug("atlas-duo");
-      if (atlasMiner) {
-        const now = Date.now();
-        await addInventoryItem(
-          insertResult.lastID,
-          atlasMiner.name,
-          1,
-          atlasMiner.base_hash_rate,
-          atlasMiner.slot_size,
-          now,
-          now,
-          atlasMiner.id
-        );
+      if (referredBy) {
+        await createReferral(referredBy, newUserId);
       }
+
+      const welcomeMiner = await ensureWelcomeMiner();
+      if (!welcomeMiner?.id) {
+        throw new Error("welcome_miner_not_available");
+      }
+
+      const now = Date.now();
+      await addInventoryItem(
+        newUserId,
+        String(welcomeMiner.name || WELCOME_MINER_NAME),
+        1,
+        Number(welcomeMiner.base_hash_rate || WELCOME_MINER_HASH_RATE),
+        Number(welcomeMiner.slot_size || WELCOME_MINER_SLOT_SIZE),
+        now,
+        now,
+        welcomeMiner.id,
+        String(welcomeMiner.image_url || WELCOME_MINER_IMAGE_URL)
+      );
+
+      await run("COMMIT");
+    } catch (error) {
+      await run("ROLLBACK");
+      throw error;
     }
 
-    const accessToken = signAccessToken({ id: insertResult.lastID, name: username, email });
+    const accessToken = signAccessToken({ id: newUserId, name: username, email });
     const refreshToken = createRefreshToken();
     await createRefreshTokenRecord({
-      userId: insertResult.lastID,
+      userId: newUserId,
       tokenId: refreshToken.tokenId,
       tokenHash: refreshToken.tokenHash,
       createdAt: Date.now(),
@@ -297,10 +364,10 @@ authRouter.post("/register", authLimiter, validateBody(registerSchema), async (r
 
     const ipPrefix = getAnonymizedRequestIp(req);
     const userAgent = req.get("user-agent");
-    await updateUserLoginMeta(insertResult.lastID, { ip: ipPrefix, userAgent });
+    await updateUserLoginMeta(newUserId, { ip: ipPrefix, userAgent });
     try {
       await createAuditLog({
-        userId: insertResult.lastID,
+        userId: newUserId,
         action: "register",
         ip: ipPrefix,
         userAgent,
@@ -319,7 +386,7 @@ authRouter.post("/register", authLimiter, validateBody(registerSchema), async (r
       ok: true,
       message: "Registration successful.",
       token: accessToken,
-      user: { id: insertResult.lastID, name: username, username, email }
+      user: { id: newUserId, name: username, username, email }
     });
   } catch (error) {
     res.status(500).json({ ok: false, message: "Unable to register right now." });

@@ -2,6 +2,7 @@ const inventoryModel = require("../models/inventoryModel");
 const minersModel = require("../models/minersModel");
 const { get } = require("../models/db");
 const { run } = require("../models/db");
+const DEFAULT_MINER_IMAGE_URL = "/assets/machines/reward1.png";
 
 function createShopController(io) {
   async function listMiners(req, res) {
@@ -18,7 +19,7 @@ function createShopController(io) {
         baseHashRate: Number(miner.base_hash_rate || 0),
         slotSize: Number(miner.slot_size || 1),
         price: Number(miner.price || 0),
-        imageUrl: miner.image_url || `/assets/machines/${miner.id}.png`
+        imageUrl: miner.image_url || DEFAULT_MINER_IMAGE_URL
       }));
 
       res.json({

@@ -24,16 +24,16 @@ const withdrawalSchema = z
 	})
 	.strict();
 
-const depositSchema = z
+const depositReportSchema = z
 	.object({
 		txHash: z.string().trim().min(20).max(120),
-		amount: z.union([z.string().trim(), z.number()]),
-		fromAddress: z.string().trim().min(10).max(120)
+		amount: z.union([z.string().trim(), z.number()]).optional(),
+		fromAddress: z.string().trim().min(10).max(120).optional()
 	})
 	.strict();
 
-// CCPayment ITN webhook (public endpoint)
-router.post("/ccpayment/deposit-webhook", walletController.handleCcpaymentDepositWebhook);
+// CCPayment ITN webhook (public endpoint) - DISABLED
+// router.post("/ccpayment/deposit-webhook", walletController.handleCcpaymentDepositWebhook);
 
 
 // Get balance and wallet info
@@ -48,13 +48,16 @@ router.post("/address", requireAuth, walletPostLimiter, validateBody(walletAddre
 // Process withdrawal
 router.post("/withdraw", requireAuth, withdrawalLimiter, validateBody(withdrawalSchema), walletController.withdraw);
 
-// Get transaction history
-router.get("/transactions", requireAuth, walletGetLimiter, walletController.getTransactions);
-
-// Get deposit address
+// Get deposit address for POL deposits
 router.get("/deposit-address", requireAuth, walletGetLimiter, walletController.getDepositAddress);
 
-// Record deposit transaction
-router.post("/deposit", requireAuth, walletPostLimiter, validateBody(depositSchema), walletController.recordDeposit);
+// Verify and credit POL deposit by transaction hash
+router.post("/verify-deposit", requireAuth, walletPostLimiter, validateBody(depositReportSchema), walletController.verifyAndCreditDeposit);
+
+// Get pending deposits
+router.get("/pending-deposits", requireAuth, walletGetLimiter, walletController.getPendingDeposits);
+
+// Get transaction history
+router.get("/transactions", requireAuth, walletGetLimiter, walletController.getTransactions);
 
 module.exports = router;

@@ -337,8 +337,8 @@ async function initializeDatabase() {
   if (!faucetMinerRow) {
     const faucetNow = Date.now();
     const result = await run(
-      "INSERT INTO miners (name, slug, base_hash_rate, price, slot_size, image_url, is_active, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-      [faucetMinerName, faucetMinerSlug, 1, 0, 1, faucetMinerImage, 1, faucetNow]
+      "INSERT INTO miners (name, slug, base_hash_rate, price, slot_size, image_url, is_active, show_in_shop, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+      [faucetMinerName, faucetMinerSlug, 1, 0, 1, faucetMinerImage, 1, 0, faucetNow]
     );
     faucetMinerId = result.lastID;
   } else {
@@ -347,6 +347,7 @@ async function initializeDatabase() {
       if (!currentImage || currentImage === "/assets/machines/auto_mining_gpu1.png") {
       await run("UPDATE miners SET image_url = ? WHERE id = ?", [faucetMinerImage, faucetMinerId]);
     }
+    await run("UPDATE miners SET show_in_shop = 0 WHERE id = ?", [faucetMinerId]);
   }
 
   // Create faucet_rewards table
@@ -368,6 +369,20 @@ async function initializeDatabase() {
       [faucetMinerId, 1, Date.now()]
     );
   }
+
+  await run(
+    `
+      UPDATE miners
+      SET show_in_shop = 0
+      WHERE id IN (
+        SELECT miner_id FROM faucet_rewards
+        UNION
+        SELECT miner_id FROM shortlink_rewards
+      )
+    `
+  ).catch(() => {
+    // shortlink_rewards may not exist yet on fresh migrations at this point.
+  });
 
   await run(`
     CREATE TABLE IF NOT EXISTS games (
@@ -440,6 +455,57 @@ async function initializeDatabase() {
 
   await run(`
     CREATE INDEX IF NOT EXISTS idx_users_powers_games_expires_at ON users_powers_games(expires_at)
+  `);
+
+  await run(`
+    CREATE TABLE IF NOT EXISTS youtube_watch_user_powers (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL,
+      hash_rate REAL NOT NULL,
+      claimed_at INTEGER NOT NULL,
+      expires_at INTEGER NOT NULL,
+      source_video_id TEXT,
+      FOREIGN KEY (user_id) REFERENCES users(id)
+    )
+  `);
+
+  await run(`
+    CREATE INDEX IF NOT EXISTS idx_youtube_watch_user_powers_user_id
+      ON youtube_watch_user_powers(user_id)
+  `);
+
+  await run(`
+    CREATE INDEX IF NOT EXISTS idx_youtube_watch_user_powers_expires_at
+      ON youtube_watch_user_powers(expires_at)
+  `);
+
+  await run(`
+    CREATE INDEX IF NOT EXISTS idx_youtube_watch_user_powers_claimed_at
+      ON youtube_watch_user_powers(claimed_at)
+  `);
+
+  await run(`
+    CREATE TABLE IF NOT EXISTS youtube_watch_power_history (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL,
+      hash_rate REAL NOT NULL,
+      claimed_at INTEGER NOT NULL,
+      expires_at INTEGER NOT NULL,
+      source_video_id TEXT,
+      status TEXT NOT NULL DEFAULT 'granted',
+      created_at INTEGER NOT NULL,
+      FOREIGN KEY (user_id) REFERENCES users(id)
+    )
+  `);
+
+  await run(`
+    CREATE INDEX IF NOT EXISTS idx_youtube_watch_power_history_user_id
+      ON youtube_watch_power_history(user_id)
+  `);
+
+  await run(`
+    CREATE INDEX IF NOT EXISTS idx_youtube_watch_power_history_claimed_at
+      ON youtube_watch_power_history(claimed_at)
   `);
 
   await run(`
@@ -1056,6 +1122,37 @@ async function initializeDatabase() {
   await run(`
     CREATE INDEX IF NOT EXISTS idx_shortlink_rewards_miner_id ON shortlink_rewards(miner_id)
   `);
+
+  await run(`
+    CREATE TABLE IF NOT EXISTS chat_messages (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL,
+      username TEXT NOT NULL,
+      message TEXT NOT NULL,
+      created_at INTEGER NOT NULL,
+      FOREIGN KEY (user_id) REFERENCES users(id)
+    )
+  `);
+
+  await run(`
+    CREATE INDEX IF NOT EXISTS idx_chat_messages_created_at ON chat_messages(created_at)
+  `);
+
+  await run(`
+    CREATE INDEX IF NOT EXISTS idx_chat_messages_user_id ON chat_messages(user_id)
+  `);
+
+  await run(
+    `
+      UPDATE miners
+      SET show_in_shop = 0
+      WHERE id IN (
+        SELECT miner_id FROM faucet_rewards
+        UNION
+        SELECT miner_id FROM shortlink_rewards
+      )
+    `
+  );
 
   try {
     await run("ALTER TABLE shortlink_completions ADD COLUMN daily_runs INTEGER NOT NULL DEFAULT 0");

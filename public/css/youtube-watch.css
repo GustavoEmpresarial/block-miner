@@ -1,0 +1,259 @@
+:root {
+  color-scheme: dark;
+  font-family: "Segoe UI Variable", "Segoe UI", Inter, Roboto, "Helvetica Neue", Arial, sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: radial-gradient(circle at top, #1f2a44, #0d111a 55%);
+  color: #f5f7ff;
+  min-height: 100vh;
+}
+
+body.with-layout main.youtube-watch-page {
+  padding-top: 0.45rem;
+}
+
+.app.youtube-watch-page {
+  width: min(1240px, 100%);
+  margin: 0 0 0 auto;
+  display: grid;
+  gap: 1.05rem;
+  grid-template-columns: minmax(0, 1.2fr) minmax(320px, 0.8fr);
+  grid-template-areas:
+    "hero hero"
+    "controls reward"
+    "player reward";
+}
+
+.card {
+  background: linear-gradient(160deg, rgba(18, 29, 52, 0.92), rgba(12, 21, 38, 0.92));
+  border: 1px solid rgba(109, 131, 179, 0.28);
+  border-radius: 16px;
+  padding: 1.1rem 1.15rem;
+  box-shadow: 0 12px 26px rgba(5, 11, 24, 0.28);
+}
+
+.hero-card {
+  grid-area: hero;
+  padding: 1.25rem 1.2rem;
+}
+
+.hero-card h1 {
+  margin: 0 0 0.45rem;
+  font-size: 2rem;
+  line-height: 1.18;
+  letter-spacing: 0.15px;
+}
+
+.hero-card p,
+.controls-card .hint,
+.status {
+  margin: 0;
+  color: #c1d2f3;
+}
+
+.hero-card p {
+  max-width: 920px;
+  font-size: 1rem;
+  line-height: 1.55;
+}
+
+.controls-card h2,
+.reward-card h2 {
+  margin: 0 0 0.75rem;
+  font-size: 1.3rem;
+  line-height: 1.2;
+}
+
+.controls-card {
+  grid-area: controls;
+}
+
+.player-card {
+  grid-area: player;
+}
+
+.reward-card {
+  grid-area: reward;
+  align-self: start;
+  position: sticky;
+  top: calc(var(--layout-nav-h) + 1rem);
+}
+
+.video-input-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 0.6rem;
+}
+
+.video-input-row input {
+  width: 100%;
+  border-radius: 12px;
+  border: 1px solid rgba(109, 131, 179, 0.45);
+  background: rgba(9, 16, 30, 0.92);
+  color: #f0f6ff;
+  padding: 0.78rem 0.86rem;
+  font-size: 0.98rem;
+}
+
+.video-input-row input:focus {
+  outline: none;
+  border-color: rgba(102, 155, 255, 0.95);
+  box-shadow: 0 0 0 3px rgba(66, 131, 255, 0.2);
+}
+
+.controls-card .hint {
+  margin-top: 0.45rem;
+  font-size: 0.86rem;
+  word-break: break-word;
+}
+
+.video-frame-wrap {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  border-radius: 14px;
+  overflow: hidden;
+  border: 1px solid rgba(109, 131, 179, 0.35);
+  background: rgba(7, 12, 22, 0.95);
+}
+
+.video-frame-wrap iframe {
+  width: 100%;
+  height: 100%;
+  border: 0;
+}
+
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.6rem;
+}
+
+.stat-item {
+  border: 1px solid rgba(109, 131, 179, 0.28);
+  border-radius: 12px;
+  padding: 0.7rem 0.78rem;
+  background: rgba(12, 21, 37, 0.88);
+}
+
+.stat-item span {
+  display: block;
+  color: #9eb5e0;
+  font-size: 0.82rem;
+}
+
+.stat-item strong {
+  display: block;
+  margin-top: 0.3rem;
+  font-size: 1.12rem;
+  color: #eff5ff;
+  line-height: 1.2;
+}
+
+.action-row {
+  display: flex;
+  gap: 0.6rem;
+  margin-top: 0.95rem;
+  margin-bottom: 0.7rem;
+}
+
+.btn {
+  border: 1px solid rgba(109, 131, 179, 0.75);
+  color: #eff5ff;
+  background: rgba(30, 45, 74, 0.9);
+  padding: 0.7rem 0.95rem;
+  border-radius: 12px;
+  font-weight: 700;
+  font-size: 0.94rem;
+  cursor: pointer;
+  transition: transform 0.16s ease, border-color 0.16s ease, background 0.16s ease;
+}
+
+.btn:not(:disabled):hover {
+  transform: translateY(-1px);
+  border-color: rgba(143, 175, 240, 0.9);
+  background: rgba(43, 63, 103, 0.95);
+}
+
+.btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.btn.btn-primary {
+  background: linear-gradient(120deg, #2f7dff, #41b0ff);
+  border-color: #5fa0ff;
+}
+
+.status {
+  min-height: 1.3rem;
+  font-size: 0.93rem;
+  line-height: 1.4;
+}
+
+.status.success {
+  color: #70f0b1;
+}
+
+.status.error {
+  color: #ff9f9f;
+}
+
+@media (max-width: 1080px) {
+  body.with-layout main.youtube-watch-page {
+    padding-top: 0.35rem;
+  }
+
+  .app.youtube-watch-page {
+    width: 100%;
+    margin: 0;
+    grid-template-columns: 1fr;
+    grid-template-areas:
+      "hero"
+      "controls"
+      "player"
+      "reward";
+  }
+
+  .reward-card {
+    position: static;
+  }
+}
+
+@media (max-width: 760px) {
+  .hero-card h1 {
+    font-size: 1.58rem;
+  }
+
+  .hero-card p {
+    font-size: 0.95rem;
+  }
+
+  .controls-card h2,
+  .reward-card h2 {
+    font-size: 1.1rem;
+  }
+
+  .stats-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .video-input-row {
+    grid-template-columns: 1fr;
+  }
+
+  .action-row {
+    flex-direction: column;
+  }
+
+  .btn {
+    width: 100%;
+    justify-content: center;
+  }
+}

@@ -3,10 +3,24 @@ const { all, get, run } = require("./db");
 async function listActiveMiners(page, pageSize) {
   const offset = (page - 1) * pageSize;
   const miners = await all(
-    "SELECT id, name, base_hash_rate, price, slot_size, image_url FROM miners WHERE is_active = 1 AND show_in_shop = 1 AND id NOT IN (SELECT DISTINCT miner_id FROM faucet_rewards) ORDER BY id ASC LIMIT ? OFFSET ?",
+    `SELECT id, name, base_hash_rate, price, slot_size, image_url
+     FROM miners
+     WHERE is_active = 1
+       AND show_in_shop = 1
+       AND id NOT IN (SELECT DISTINCT miner_id FROM faucet_rewards)
+       AND id NOT IN (SELECT DISTINCT miner_id FROM shortlink_rewards)
+     ORDER BY id ASC
+     LIMIT ? OFFSET ?`,
     [pageSize, offset]
   );
-  const totalRow = await get("SELECT COUNT(*) as total FROM miners WHERE is_active = 1 AND show_in_shop = 1 AND id NOT IN (SELECT DISTINCT miner_id FROM faucet_rewards)");
+  const totalRow = await get(
+    `SELECT COUNT(*) as total
+     FROM miners
+     WHERE is_active = 1
+       AND show_in_shop = 1
+       AND id NOT IN (SELECT DISTINCT miner_id FROM faucet_rewards)
+       AND id NOT IN (SELECT DISTINCT miner_id FROM shortlink_rewards)`
+  );
 
   return {
     miners,
@@ -16,7 +30,13 @@ async function listActiveMiners(page, pageSize) {
 
 async function getActiveMinerById(minerId) {
   return get(
-    "SELECT id, name, base_hash_rate, price, slot_size, image_url FROM miners WHERE id = ? AND is_active = 1 AND show_in_shop = 1 AND id NOT IN (SELECT DISTINCT miner_id FROM faucet_rewards)",
+    `SELECT id, name, base_hash_rate, price, slot_size, image_url
+     FROM miners
+     WHERE id = ?
+       AND is_active = 1
+       AND show_in_shop = 1
+       AND id NOT IN (SELECT DISTINCT miner_id FROM faucet_rewards)
+       AND id NOT IN (SELECT DISTINCT miner_id FROM shortlink_rewards)`,
     [minerId]
   );
 }

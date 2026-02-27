@@ -31,6 +31,13 @@ textarea {
   font-family: "Segoe UI Variable", "Segoe UI", Inter, Roboto, "Helvetica Neue", Arial, sans-serif;
 }
 
+html,
+body {
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
 
 body.with-layout {
   margin: 0;
@@ -38,6 +45,8 @@ body.with-layout {
   min-height: 100vh;
   overflow-x: hidden;
   font-size: calc(14px * var(--layout-scale));
+  line-height: 1.45;
+  color: #eaf1ff;
 }
 
 body.with-layout main {

@@ -5,7 +5,7 @@ const logger = require("../utils/logger").getLogger("WalletController");
 const { getAnonymizedRequestIp } = require("../utils/clientIp");
 const { allocateNonce, resetNonce } = require("../utils/nonceManager");
 const config = require("../src/config");
-const { get } = require("../src/db/sqlite");
+const { get, all } = require("../src/db/sqlite");
 const ccpaymentService = require("../services/ccpaymentService");
  
 const POLYGON_CHAIN_ID = Number(process.env.POLYGON_CHAIN_ID || 137);
@@ -100,6 +100,161 @@ function normalizeAmountInput(amountRaw) {
   }
 
   return amount;
+}
+
+async function verifyPolygonTransaction(txHash) {
+  try {
+    // Try multiple RPC endpoints for reliability
+    for (const rpcUrl of RPC_URLS) {
+      try {
+        const response = await fetchWithTimeout(
+          rpcUrl,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              jsonrpc: "2.0",
+              id: 1,
+              method: "eth_getTransactionReceipt",
+              params: [txHash]
+            })
+          },
+          POLYGON_RPC_TIMEOUT_MS
+        );
+
+        if (!response.ok) continue;
+
+        const receiptData = await response.json();
+        if (receiptData.error) continue;
+
+        const receipt = receiptData.result || null;
+
+        // Get transaction details
+        const txResponse = await fetchWithTimeout(
+          rpcUrl,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              jsonrpc: "2.0",
+              id: 2,
+              method: "eth_getTransactionByHash",
+              params: [txHash]
+            })
+          },
+          POLYGON_RPC_TIMEOUT_MS
+        );
+
+        if (!txResponse.ok) continue;
+
+        const txData = await txResponse.json();
+        if (txData.error || !txData.result) continue;
+
+        const transaction = txData.result;
+
+        // Convert hex values to numbers
+        const valueInWei = BigInt(transaction.value || "0x0");
+        const valueInPol = Number(ethers.formatUnits(valueInWei, 18));
+
+        if (!receipt) {
+          return {
+            isValid: true,
+            pending: true,
+            success: false,
+            from: transaction.from,
+            to: transaction.to,
+            value: valueInPol,
+            blockNumber: null,
+            gasUsed: null,
+            txHash: transaction.hash
+          };
+        }
+        
+        return {
+          isValid: true,
+          pending: false,
+          success: receipt.status === "0x1",
+          from: transaction.from,
+          to: transaction.to,
+          value: valueInPol,
+          blockNumber: parseInt(receipt.blockNumber, 16),
+          gasUsed: parseInt(receipt.gasUsed, 16),
+          txHash: transaction.hash
+        };
+        
+      } catch (error) {
+        logger.debug(`RPC ${rpcUrl} failed`, { error: error.message });
+        continue;
+      }
+    }
+    
+    return {
+      isValid: false,
+      error: "Transaction not found on Polygon network"
+    };
+    
+  } catch (error) {
+    logger.error("Failed to verify Polygon transaction", {
+      txHash,
+      error: error.message
+    });
+    
+    return {
+      isValid: false,
+      error: "Unable to verify transaction"
+    };
+  }
+}
+
+async function fetchWithTimeout(url, options, timeoutMs) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  
+  try {
+    const response = await fetch(url, {
+      ...options,
+      signal: controller.signal
+    });
+    return response;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function getPendingDeposits(req, res) {
+  try {
+    const userId = req.user.id;
+    
+    const pendingDeposits = await all(
+      `SELECT id, amount, tx_hash, from_address, status, created_at 
+       FROM deposits 
+       WHERE user_id = ? AND status = 'pending' 
+       ORDER BY created_at DESC`,
+      [userId]
+    );
+
+    res.json({
+      ok: true,
+      deposits: pendingDeposits.map(deposit => ({
+        id: deposit.id,
+        amount: Number(deposit.amount),
+        txHash: deposit.tx_hash,
+        fromAddress: deposit.from_address,
+        status: deposit.status,
+        createdAt: Number(deposit.created_at)
+      }))
+    });
+    
+  } catch (error) {
+    logger.error("Failed to get pending deposits", {
+      userId: req.user?.id,
+      error: error.message
+    });
+    res.status(500).json({
+      ok: false,
+      message: "Unable to load pending deposits"
+    });
+  }
 }
 
 function validateWithdrawalInput(amountRaw, address) {
@@ -684,219 +839,178 @@ async function getTransactions(req, res) {
 
 async function getDepositAddress(req, res) {
   try {
-    if (ccpaymentService.isEnabled()) {
-      try {
-        const localUserId = req.user.id;
-        const ccpUserId = toCcpaymentUserId(localUserId);
-        const data = await ccpaymentService.createOrGetUserDepositAddress({
-          userId: ccpUserId,
-          chain: CCPAYMENT_CHAIN
-        });
-
-        const depositAddress = String(data?.address || "").trim();
-        const memo = String(data?.memo || "").trim();
-
-        if (!depositAddress) {
-          logger.error("❌ CCPayment did not return deposit address - NO FALLBACK", { userId: localUserId });
-          return res.status(502).json({
-            ok: false,
-            message: "CCPayment did not return a deposit address"
-          });
-        }
-
-        return res.json({
-          ok: true,
-          provider: "ccpayment",
-          chain: CCPAYMENT_CHAIN,
-          depositAddress,
-          memo
-        });
-      } catch (ccpaymentError) {
-        logger.error("❌ CCPayment service failed - NO FALLBACK", {
-          error: ccpaymentError.message,
-          userId: req.user.id
-        });
-        return res.status(502).json({
-          ok: false,
-          message: "CCPayment service unavailable"
-        });
-      }
-    }
-
-    // If CCPayment is not enabled, reject the request
-    logger.warn("❌ CCPayment is disabled - rejecting deposit address request");
-    return res.status(503).json({
-      ok: false,
-      message: "Deposit via CCPayment is not available"
+    // Use the main checkin receiver address as deposit address
+    const depositAddress = CHECKIN_RECEIVER;
+    
+    res.json({
+      ok: true,
+      depositAddress,
+      address: depositAddress,
+      network: "Polygon",
+      chainId: POLYGON_CHAIN_ID,
+      symbol: "POL",
+      instructions: "Send POL from Trust Wallet or any Web3 wallet to this address. Your balance will be credited automatically after network confirmation (usually 1-2 minutes)."
     });
-
   } catch (error) {
-    logger.error("Unexpected error getting deposit address:", error);
+    logger.error("Failed to get deposit address", {
+      userId: req.user?.id,
+      error: error.message
+    });
     res.status(500).json({
       ok: false,
-      message: "Failed to get deposit address"
+      message: "Unable to get deposit address. Please try again."
     });
   }
 }
 
 async function handleCcpaymentDepositWebhook(req, res) {
+  // DEPOSIT FUNCTIONALITY DISABLED
+  return res.status(503).json({
+    ok: false,
+    message: "Deposit functionality is temporarily disabled"
+  });
+}
+
+async function verifyAndCreditDeposit(req, res) {
   try {
-    if (!ccpaymentService.isEnabled()) {
-      res.status(503).json({ msg: "Disabled" });
-      return;
-    }
-
-    if (!isAllowedWebhookSourceIp(req)) {
-      logger.warn("Rejected CCPayment webhook due to source IP restriction", {
-        ipCandidates: getRequestIpCandidates(req)
+    const userId = req.user.id;
+    const { txHash, fromAddress } = req.body;
+    
+    if (!txHash || typeof txHash !== "string" || txHash.length < 20) {
+      return res.status(400).json({
+        ok: false,
+        message: "Invalid transaction hash"
       });
-      res.status(403).json({ msg: "Forbidden" });
-      return;
     }
 
-    const signatureOk = ccpaymentService.verifyWebhookSignature({
-      headers: req.headers,
-      rawBody: req.rawBody
-    });
+    // Check if this transaction was already processed
+    const existingDeposit = await get(
+      "SELECT id, status, amount FROM deposits WHERE tx_hash = ? AND user_id = ?",
+      [txHash.toLowerCase(), userId]
+    );
 
-    if (!signatureOk) {
-      logger.warn("Rejected CCPayment webhook due to invalid signature");
-      res.status(401).json({ msg: "Invalid signature" });
-      return;
-    }
-
-    const payload = req.body || {};
-    const type = String(payload.type || "").trim();
-    const msg = payload.msg && typeof payload.msg === "object" ? payload.msg : {};
-
-    if (type === "ActivateWebhookURL") {
-      return sendWebhookSuccess(res);
-    }
-
-    if (type !== "UserDeposit") {
-      return sendWebhookSuccess(res);
-    }
-
-    if (String(msg.status || "") !== "Success") {
-      return sendWebhookSuccess(res);
-    }
-
-    if (Boolean(msg.isFlaggedAsRisky)) {
-      logger.warn("CCPayment webhook marked as risky; skipping credit", {
-        recordId: msg.recordId,
-        userId: msg.userId
-      });
-      return sendWebhookSuccess(res);
-    }
-
-    const recordId = String(msg.recordId || "").trim();
-    if (!recordId) {
-      res.status(400).json({ msg: "Bad Request" });
-      return;
-    }
-
-    const recordResponse = await ccpaymentService.getUserDepositRecord({ recordId });
-    const record = recordResponse?.record || {};
-
-    if (String(record.status || "") !== "Success") {
-      return sendWebhookSuccess(res);
-    }
-
-    if (Boolean(record.isFlaggedAsRisky)) {
-      return sendWebhookSuccess(res);
-    }
-
-    const chain = String(record.chain || "").trim().toUpperCase();
-    if (chain !== CCPAYMENT_CHAIN) {
-      logger.warn("CCPayment deposit ignored: chain not allowed", { recordId, chain });
-      return sendWebhookSuccess(res);
-    }
-
-    const coinSymbol = String(record.coinSymbol || "").trim().toUpperCase();
-    if (CCPAYMENT_ALLOWED_COIN_SYMBOLS.size > 0 && !CCPAYMENT_ALLOWED_COIN_SYMBOLS.has(coinSymbol)) {
-      logger.warn("CCPayment deposit ignored: coin not allowed", { recordId, coinSymbol });
-      return sendWebhookSuccess(res);
-    }
-
-    const localUserId = toLocalUserId(record.userId || msg.userId);
-    if (!localUserId) {
-      logger.warn("CCPayment deposit ignored: invalid user mapping", {
-        recordId,
-        ccpaymentUserId: record.userId || msg.userId
-      });
-      return sendWebhookSuccess(res);
-    }
-
-    const userExists = await get("SELECT id FROM users WHERE id = ? LIMIT 1", [localUserId]);
-    if (!userExists) {
-      logger.warn("CCPayment deposit ignored: local user not found", { recordId, localUserId });
-      return sendWebhookSuccess(res);
-    }
-
-    const amount = normalizeAmountInput(record.amount);
-    if (amount <= 0) {
-      return sendWebhookSuccess(res);
-    }
-
-    const txHash = String(record.txId || `ccpayment-record-${recordId}`).trim();
-    const fromAddress = String(record.fromAddress || "ccpayment").trim() || "ccpayment";
-    const toAddress = String(record.toAddress || "").trim();
-
-    if (!toAddress) {
-      logger.error("❌ [CCPayment Webhook] Missing destination address - rejecting", { recordId });
-      throw new Error("Missing destination address in CCPayment record");
-    }
-
-    const alreadyProcessed = await walletModel.getTransactionByHash(txHash);
-    if (alreadyProcessed) {
-      return sendWebhookSuccess(res);
-    }
-
-    let depositId;
-    try {
-      depositId = await walletModel.createDeposit(localUserId, amount, txHash, fromAddress, toAddress);
-    } catch (error) {
-      if (String(error?.message || "").includes("SQLITE_CONSTRAINT")) {
-        return sendWebhookSuccess(res);
+    if (existingDeposit) {
+      if (existingDeposit.status === "completed") {
+        return res.json({
+          ok: true,
+          message: "This transaction has already been credited to your account",
+          amount: existingDeposit.amount,
+          alreadyProcessed: true
+        });
       }
-      throw error;
+      if (existingDeposit.status === "pending") {
+        return res.json({
+          ok: true,
+          message: "This transaction is being processed. Please wait a few minutes.",
+          status: "pending"
+        });
+      }
     }
 
-    await walletModel.creditBalance(localUserId, amount);
-    await walletModel.updateDepositStatus(depositId, "completed", amount);
+    // Verify transaction on Polygon network
+    const transactionData = await verifyPolygonTransaction(txHash);
+    
+    if (!transactionData.isValid) {
+      return res.status(400).json({
+        ok: false,
+        message: transactionData.error || "Transaction not found or invalid"
+      });
+    }
 
-    logger.info("CCPayment deposit confirmed and credited", {
-      recordId,
-      txHash,
-      userId: localUserId,
-      amountPol: amount,
-      chain,
-      coinSymbol
+    // Validate transaction details
+    if (transactionData.to?.toLowerCase() !== CHECKIN_RECEIVER.toLowerCase()) {
+      return res.status(400).json({
+        ok: false,
+        message: "Transaction was not sent to the correct deposit address"
+      });
+    }
+
+    if (transactionData.pending) {
+      return res.status(202).json({
+        ok: true,
+        status: "pending",
+        message: "Transaction detected. Waiting for blockchain confirmation.",
+        txHash: txHash.toLowerCase()
+      });
+    }
+
+    if (!transactionData.success) {
+      return res.status(400).json({
+        ok: false,
+        message: "Transaction failed on the blockchain"
+      });
+    }
+
+    const actualAmount = Number(transactionData.value || 0);
+    if (actualAmount <= 0) {
+      return res.status(400).json({
+        ok: false,
+        message: "Invalid transaction amount"
+      });
+    }
+
+    // Create deposit record
+    const depositId = await walletModel.createDeposit(
+      userId,
+      actualAmount,
+      txHash.toLowerCase(),
+      transactionData.from || fromAddress,
+      transactionData.to
+    );
+
+    // Complete deposit and credit balance
+    await walletModel.updateDepositStatus(depositId, "completed", actualAmount);
+    await walletModel.creditBalance(userId, actualAmount);
+
+    // Log the deposit
+    await createAuditLog(
+      userId,
+      "deposit_credited",
+      { 
+        depositId,
+        amount: actualAmount,
+        txHash: txHash.toLowerCase(),
+        fromAddress: transactionData.from,
+        blockNumber: transactionData.blockNumber
+      },
+      getAnonymizedRequestIp(req)
+    );
+
+    logger.info("POL deposit verified and credited", {
+      userId,
+      depositId,
+      amount: actualAmount,
+      txHash: txHash.toLowerCase(),
+      blockNumber: transactionData.blockNumber
     });
 
-    return sendWebhookSuccess(res);
+    res.json({
+      ok: true,
+      message: "Deposit verified and credited successfully!",
+      amount: actualAmount,
+      txHash: txHash.toLowerCase(),
+      depositId
+    });
+
   } catch (error) {
-    logger.error("Failed to process CCPayment deposit webhook", {
+    logger.error("Failed to verify and credit deposit", {
+      userId: req.user?.id,
+      txHash: req.body?.txHash,
       error: error.message
     });
-    res.status(500).json({ msg: "Failed" });
+    res.status(500).json({
+      ok: false,
+      message: "Unable to process deposit. Please try again or contact support."
+    });
   }
 }
 
 async function recordDeposit(req, res) {
-  try {
-    logger.error("❌ recordDeposit endpoint is disabled - only CCPayment deposits are accepted");
-    return res.status(403).json({
-      ok: false,
-      message: "Manual deposits are disabled. Only CCPayment deposits are accepted."
-    });
-  } catch (error) {
-    console.error("Error recording deposit:", error);
-    res.status(500).json({
-      ok: false,
-      message: error.message || "Failed to record deposit"
-    });
-  }
+  // DEPOSIT FUNCTIONALITY DISABLED
+  return res.status(503).json({
+    ok: false,
+    message: "Deposit functionality is temporarily disabled for maintenance. Please check back later."
+  });
 }
 
 async function getMiningRewards(req, res) {
@@ -959,7 +1073,8 @@ module.exports = {
   getTransactions,
   getDepositAddress,
   handleCcpaymentDepositWebhook,
-  recordDeposit,
+  verifyAndCreditDeposit,
+  getPendingDeposits,
   sendOnChainWithdrawal,
   __test: {
     normalizeAmountInput,

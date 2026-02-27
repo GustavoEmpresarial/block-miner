@@ -21,7 +21,7 @@ function createMachinesController({ io, syncUserBaseHashRate }) {
     try {
       const machines = await machineModel.listUserMachines(req.user.id);
       const normalized = machines.map((machine) => {
-        let image_url = machine.image_url || (machine.miner_id ? `/assets/machines/${machine.miner_id}.png` : null);
+        let image_url = machine.image_url || null;
         if (!image_url) {
           const normalizedName = normalizeMachineIdentifier(machine.miner_name);
           if (normalizedName === "gpu-1-ghs" || normalizedName === "auto-mining-gpu-1") {

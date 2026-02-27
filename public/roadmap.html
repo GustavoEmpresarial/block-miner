@@ -10,30 +10,115 @@
     <link rel="stylesheet" href="/css/layout.css" />
     <link rel="stylesheet" href="/css/game.css" />
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" />
+    <style>
+      .roadmap-page .stats-hero h1 {
+        font-size: 1.85rem;
+        line-height: 1.2;
+      }
+
+      .roadmap-page .subtitle {
+        font-size: 1.05rem;
+        line-height: 1.5;
+      }
+
+      .roadmap-page .card h2 {
+        font-size: 1.45rem;
+        line-height: 1.25;
+        margin-bottom: 0.9rem;
+      }
+
+      .roadmap-page .card p {
+        font-size: 1rem;
+        line-height: 1.55;
+        margin: 0.5rem 0;
+      }
+
+      @media (max-width: 900px) {
+        .roadmap-page .stats-hero h1 {
+          font-size: 1.55rem;
+        }
+
+        .roadmap-page .card h2 {
+          font-size: 1.25rem;
+        }
+
+        .roadmap-page .subtitle,
+        .roadmap-page .card p {
+          font-size: 0.95rem;
+        }
+      }
+    </style>
   </head>
   <body>
     <div id="layoutInclude"></div>
 
-    <main class="app">
+    <main class="app roadmap-page">
       <section class="card stats-hero">
         <h1><i class="bi bi-signpost-2"></i> BlockMiner Roadmap</h1>
-        <p class="subtitle">Current direction and next delivery milestones.</p>
+        <p class="subtitle">Current direction and next delivery milestones. The roadmap is continuously updated based on community feedback.</p>
       </section>
 
       <section class="card">
         <h2><i class="bi bi-check2-circle"></i> Completed</h2>
         <p>✅ Mining Stats with latest rewards and live network metrics.</p>
-        <p>✅ Network Power Ranking with Mining Room + active game boosts.</p>
+        <p>✅ Network Power Ranking with Mining Room + active Mini Game boosts + YouTube boosts.</p>
+        <p>✅ Daily Check-in flow and reward distribution connected to wallet balance.</p>
+        <p>✅ Shop, Inventory, and machine activation pipeline for miner progression.</p>
+        <p>✅ Admin panel improvements with richer user/finance data and backup export.</p>
+        <p>✅ Real-time community chat with persistent message history in database.</p>
       </section>
 
       <section class="card">
         <h2><i class="bi bi-hourglass-split"></i> In Progress</h2>
-        <p>🔄 Ranking improvements and richer user profile details.</p>
+        <p>🔄 Global bug-fix pass focused on gameplay edge cases and UI consistency.</p>
+        <p>🔄 Ranking improvements with better anti-abuse validation and fairer sorting.</p>
+        <p>🔄 Performance optimization for background tasks and faster page loading.</p>
+        <p>🔄 Wallet UX refinements for clearer status, validation, and transaction states.</p>
+        <p>🔄 Expanded anti-spam and moderation tools for chat safety and quality.</p>
       </section>
 
       <section class="card">
-        <h2><i class="bi bi-rocket"></i> Planned</h2>
-        <p>🛠️ Expanded content updates in Blog and gameplay event timeline.</p>
+        <h2><i class="bi bi-lightning-charge"></i> Next Updates</h2>
+        <p>🛠️ Recurring stability updates with weekly bug fixes and quality improvements.</p>
+        <p>⚙️ Better mobile responsiveness across Dashboard, Wallet, Shop, and Chat.</p>
+        <p>📈 Mining room interaction polish and improved machine performance feedback.</p>
+        <p>🧠 Smarter in-app tooltips and onboarding hints for new players.</p>
+        <p>🔐 Additional security hardening for authentication and sensitive actions.</p>
+      </section>
+
+      <section class="card">
+        <h2><i class="bi bi-coin"></i> Mining Economy Expansion</h2>
+        <p>🪙 New mineable coins are planned in future updates (multi-coin mining phases).</p>
+        <p>🪙 Coin diversification with separate profitability profiles and network dynamics.</p>
+        <p>🪙 Per-coin pool tracking, balance visibility, and payout history improvements.</p>
+        <p>🪙 Advanced swap utilities for converting mined assets with clearer fee display.</p>
+        <p>🪙 Seasonal reward boosts tied to coin activity and ecosystem milestones.</p>
+      </section>
+
+      <section class="card">
+        <h2><i class="bi bi-wallet2"></i> Wallet & Payments</h2>
+        <p>💸 Upcoming withdrawal channels including FaucetPay and CWallet integrations.</p>
+        <p>💸 Faster withdrawal processing pipeline with clearer status communication.</p>
+        <p>💸 Deposit reactivation with improved reliability and safer validation checks.</p>
+        <p>💸 Better transaction history filters and export options for account tracking.</p>
+      </section>
+
+      <section class="card">
+        <h2><i class="bi bi-stars"></i> Content, Events & Community</h2>
+        <p>🎯 Live events system with rotating missions and limited-time reward campaigns.</p>
+        <p>🛍️ Marketplace feature rollout with secure listing and trade history visibility.</p>
+        <p>📚 More educational blog content focused on mining strategy and optimization.</p>
+        <p>💬 Community improvements with richer profiles, social badges, and engagement tools.</p>
+        <p>🚀 Seasonal roadmap drops with transparent progress and release notes.</p>
+      </section>
+
+      <section class="card">
+        <h2><i class="bi bi-rocket"></i> Planned (Longer Term)</h2>
+        <p>🏗️ Staking module with lock periods, projected returns, and claim history.</p>
+        <p>🧩 Advanced machine progression systems with more upgrade paths.</p>
+        <p>🌍 Internationalization and broader language support across user pages.</p>
+        <p>📊 More analytics for earnings, power growth, and long-term account performance.</p>
+        <p>🛠️ Ongoing architecture improvements for scalability and smoother releases.</p>
       </section>
     </main>
 

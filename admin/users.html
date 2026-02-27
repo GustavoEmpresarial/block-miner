@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>BlockMiner | Admin Users</title>
+    <link rel="stylesheet" href="/admin/styles.css" />
+  </head>
+  <body>
+    <main class="admin-app">
+      <header class="admin-header">
+        <div>
+          <h1>Users Detailed</h1>
+          <p>User metrics, details and recent activity.</p>
+        </div>
+        <div style="display:flex;gap:.6rem;align-items:center;">
+          <span id="pageStatus" class="status"></span>
+          <a class="btn" href="/admin/">Back</a>
+          <button class="btn" id="refreshBtn" type="button">Refresh</button>
+        </div>
+      </header>
+
+      <section class="card">
+        <div class="form-grid" style="grid-template-columns: 1.2fr 1fr 1fr auto; margin-bottom: .8rem;">
+          <label>
+            Search (email/username)
+            <input id="searchInput" type="text" placeholder="email ou username" />
+          </label>
+          <label>
+            From date
+            <input id="fromInput" type="date" />
+          </label>
+          <label>
+            To date
+            <input id="toInput" type="date" />
+          </label>
+          <button class="btn" id="applyFilterBtn" type="button">Apply</button>
+        </div>
+        <div class="form-grid" style="grid-template-columns: 1fr auto;">
+          <label>
+            User ID
+            <input id="userIdInput" type="number" min="1" placeholder="Ex: 1" />
+          </label>
+          <button class="btn primary" id="loadDetailsBtn" type="button">Load Details</button>
+        </div>
+      </section>
+
+      <section class="card">
+        <div class="table-header">
+          <h2>Recent users</h2>
+          <span id="usersStatus" class="status"></span>
+        </div>
+        <div class="table-wrapper">
+          <table class="table-compact">
+            <thead>
+              <tr>
+                <th>ID</th><th>Email</th><th>Username</th><th>IP</th><th>Pool</th><th>Faucet</th><th>Shortlink</th><th>AutoGPU</th><th>YT Claims</th><th>YT Active GH</th><th>Action</th>
+              </tr>
+            </thead>
+            <tbody id="usersTable"></tbody>
+          </table>
+        </div>
+        <div style="display:flex;justify-content:flex-end;gap:.6rem;margin-top:.8rem;">
+          <button class="btn small" id="prevPageBtn" type="button">Prev</button>
+          <span id="pageInfo" class="status"></span>
+          <button class="btn small" id="nextPageBtn" type="button">Next</button>
+        </div>
+      </section>
+
+      <section class="card">
+        <div class="table-header">
+          <h2>User details</h2>
+          <span id="detailsStatus" class="status"></span>
+        </div>
+        <div id="detailsGrid" class="stats-grid"></div>
+      </section>
+
+      <section class="card">
+        <div class="table-header"><h2>Recent transactions</h2></div>
+        <div class="table-wrapper">
+          <table class="table-compact">
+            <thead><tr><th>ID</th><th>Type</th><th>Amount</th><th>Status</th><th>Tx</th><th>When</th></tr></thead>
+            <tbody id="txTable"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="card">
+        <div class="table-header"><h2>Recent payouts</h2></div>
+        <div class="table-wrapper">
+          <table class="table-compact">
+            <thead><tr><th>ID</th><th>Amount</th><th>Source</th><th>Tx</th><th>When</th></tr></thead>
+            <tbody id="payoutTable"></tbody>
+          </table>
+        </div>
+      </section>
+    </main>
+    <script src="/admin/users.js"></script>
+  </body>
+</html>

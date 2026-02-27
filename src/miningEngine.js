@@ -159,18 +159,35 @@ class MiningEngine {
     //          2 users 10 GHS each = each gets 0.05 POL (50% share each)
     //          1 user 5 GHS + 1 user 15 GHS = gets 0.025 + 0.075 POL
     
+    const minedBlockNumber = this.blockNumber;
     const totalWork = [...this.roundWork.values()].reduce((sum, value) => sum + value, 0);
     if (totalWork <= 0) {
       logger.debug("No work accumulated in round, skipping distribution", {
-        blockNumber: this.blockNumber
+        blockNumber: minedBlockNumber
       });
       this.roundWork.forEach((_, minerId) => this.roundWork.set(minerId, 0));
+      this.lastReward = 0;
+      this.blockHistory.unshift({
+        blockNumber: minedBlockNumber,
+        reward: 0,
+        minerCount: this.activeMiners,
+        timestamp: Date.now()
+      });
+
+      if (this.blockHistory.length > 12) {
+        this.blockHistory.length = 12;
+      }
+
+      this.blockNumber += 1;
+      this.blockProgress = 0;
+      this.lastBlockAt = Date.now();
+      this.blockStartedAt = this.lastBlockAt;
+      this.nextBlockAt = this.blockStartedAt + this.blockDurationMs;
       return;
     }
 
     // Fixed reward per block (0.1 POL) - no randomness to ensure consistent payouts
     const blockReward = this.rewardBase;
-    const minedBlockNumber = this.blockNumber;
     const minerRewards = [];
 
     for (const [minerId, work] of this.roundWork.entries()) {

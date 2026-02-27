@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="theme-color" content="#090f22" />
+    <link rel="icon" href="/assets/favcon/favicon.ico" type="image/x-icon" />
+    <link rel="apple-touch-icon" href="/assets/favcon/apple-touch-icon.png" />
+    <title>BlockMiner | YouTube Boost</title>
+    <link rel="stylesheet" href="/css/layout.css" />
+    <link rel="stylesheet" href="/css/youtube-watch.css" />
+  </head>
+  <body>
+    <div id="layoutInclude"></div>
+
+    <main class="app youtube-watch-page">
+      <section class="card hero-card">
+        <h1>YouTube Boost</h1>
+        <p>Watch videos inside the site and earn temporary hash power every 60 seconds while the watch mode is active.</p>
+      </section>
+
+      <section class="card controls-card">
+        <h2>Load a YouTube video</h2>
+        <div class="video-input-row">
+          <input id="youtubeUrlInput" type="text" placeholder="Paste a YouTube URL or video ID" autocomplete="off" />
+          <button id="loadVideoBtn" class="btn" type="button">Load Video</button>
+        </div>
+        <p class="hint">Examples: https://www.youtube.com/watch?v=VIDEO_ID or just VIDEO_ID</p>
+      </section>
+
+      <section class="card player-card">
+        <div class="video-frame-wrap">
+          <iframe
+            id="youtubeFrame"
+            src=""
+            title="YouTube video player"
+            loading="lazy"
+            referrerpolicy="strict-origin-when-cross-origin"
+            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+            allowfullscreen
+          ></iframe>
+        </div>
+      </section>
+
+      <section class="card reward-card">
+        <h2>Reward Tracker</h2>
+        <div class="stats-grid">
+          <div class="stat-item">
+            <span>Next claim in</span>
+            <strong id="nextClaimTimer">60s</strong>
+          </div>
+          <div class="stat-item">
+            <span>Claim per minute</span>
+            <strong id="rewardPerMinute">--</strong>
+          </div>
+          <div class="stat-item">
+            <span>Duration per claim</span>
+            <strong id="rewardDuration">--</strong>
+          </div>
+          <div class="stat-item">
+            <span>Active YouTube bonus</span>
+            <strong id="activeYoutubeHash">0.00 GH/s</strong>
+          </div>
+          <div class="stat-item">
+            <span>Claims (24h)</span>
+            <strong id="claims24h">0</strong>
+          </div>
+          <div class="stat-item">
+            <span>Hash granted (24h)</span>
+            <strong id="hashGranted24h">0.00 GH/s</strong>
+          </div>
+          <div class="stat-item">
+            <span>Claims (all time)</span>
+            <strong id="claimsTotal">0</strong>
+          </div>
+          <div class="stat-item">
+            <span>Hash granted (all time)</span>
+            <strong id="hashGrantedTotal">0.00 GH/s</strong>
+          </div>
+        </div>
+
+        <div class="action-row">
+          <button id="startWatchBtn" class="btn btn-primary" type="button">Start Watch Mode</button>
+          <button id="stopWatchBtn" class="btn" type="button" disabled>Stop</button>
+        </div>
+
+        <p id="watchStatus" class="status">Load a video and start watch mode.</p>
+      </section>
+    </main>
+
+    <script src="/js/layout.js"></script>
+    <script src="/js/youtube-watch.js"></script>
+  </body>
+</html>

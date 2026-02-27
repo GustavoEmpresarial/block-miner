@@ -2,6 +2,7 @@ const { get, run } = require("../models/db");
 const { addInventoryItem } = require("../models/inventoryModel");
 const minersModel = require("../models/minersModel");
 const { getBrazilCheckinDateKey } = require("../utils/checkinDate");
+const DEFAULT_MINER_IMAGE_URL = "/assets/machines/reward1.png";
 
 const DEFAULT_FAUCET_COOLDOWN_MS = 60 * 60 * 1000;
 
@@ -100,7 +101,7 @@ async function getStatus(req, res) {
         name: reward.miner.name,
         hashRate: Number(reward.miner.base_hash_rate || 0),
         slotSize: Number(reward.miner.slot_size || 1),
-        imageUrl: reward.miner.image_url || `/assets/machines/${reward.miner.id}.png`
+        imageUrl: reward.miner.image_url || DEFAULT_MINER_IMAGE_URL
       }
     });
   } catch (error) {
@@ -160,7 +161,7 @@ async function claim(req, res) {
         name: miner.name,
         hashRate: Number(miner.base_hash_rate || 0),
         slotSize: Number(miner.slot_size || 1),
-        imageUrl: miner.image_url || `/assets/machines/${miner.id}.png`
+        imageUrl: miner.image_url || DEFAULT_MINER_IMAGE_URL
       },
       nextAvailableAt: now + reward.cooldownMs
     });

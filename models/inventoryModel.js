@@ -1,4 +1,5 @@
 const { all, get, run } = require("./db");
+const DEFAULT_MINER_IMAGE_URL = "/assets/machines/reward1.png";
 
 async function listInventory(userId) {
   return all(
@@ -30,7 +31,7 @@ async function updateInventoryItemMeta(userId, inventoryId, minerName, slotSize,
   let imageUrl = null;
   if (minerId) {
     const miner = await require("./minersModel").getMinerById(minerId);
-    imageUrl = miner?.image_url || `/assets/machines/${minerId}.png`;
+    imageUrl = miner?.image_url || DEFAULT_MINER_IMAGE_URL;
   }
   if (imageUrl) {
     return run(

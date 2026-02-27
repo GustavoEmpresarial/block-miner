@@ -1,4 +1,5 @@
 require("dotenv").config();
+const fs = require("fs/promises");
 const path = require("path");
 const os = require("os");
 const express = require("express");
@@ -23,7 +24,7 @@ const { createAdminAuthController } = require("./controllers/adminAuthController
 const { createCheckinController } = require("./controllers/checkinController");
 const { requireAuth } = require("./middleware/auth");
 const { createRateLimiter } = require("./middleware/rateLimit");
-const { validateBody } = require("./middleware/validate");
+const { validateBody, validateQuery, validateParams } = require("./middleware/validate");
 const { createCsrfMiddleware } = require("./middleware/csrf");
 const { createCspMiddleware } = require("./middleware/csp");
 const { createAdminAuthRouter } = require("./routes/admin-auth");
@@ -38,6 +39,9 @@ const { getBrazilCheckinDateKey } = require("./utils/checkinDate");
 const { startCronTasks } = require("./cron");
 const { createPublicStateService } = require("./src/services/publicStateService");
 const { registerMinerSocketHandlers } = require("./src/socket/registerMinerSocketHandlers");
+const { createDatabaseBackup, getBackupConfig } = require("./utils/backup");
+const { createServerDatabaseController } = require("./controllers/database/serverDatabaseController");
+const serverDatabaseModel = require("./models/database/serverDatabaseModel");
 const logger = require("./utils/logger");
 
 // Validate JWT_SECRET before starting
@@ -83,6 +87,9 @@ const parsedMemoryGameRewardGh = Number(process.env.MEMORY_GAME_REWARD_GH);
 const MEMORY_GAME_REWARD_GH = Number.isFinite(parsedMemoryGameRewardGh) && parsedMemoryGameRewardGh > 0
   ? parsedMemoryGameRewardGh
   : 5;
+const YOUTUBE_WATCH_REWARD_GH = 3;
+const YOUTUBE_WATCH_CLAIM_INTERVAL_MS = 60_000;
+const YOUTUBE_WATCH_BOOST_DURATION_MS = 24 * 60 * 60 * 1000;
 
 let usersPowersGamesHasCheckinId = null;
 
@@ -147,7 +154,7 @@ async function ensureCheckinConfirmed(checkin) {
     const receipt = await rpcCall("eth_getTransactionReceipt", [checkin.tx_hash]);
     if (receipt && receipt.status === "0x1") {
       const now = Date.now();
-      await run("UPDATE daily_checkins SET status = ?, confirmed_at = ? WHERE id = ?", ["confirmed", now, checkin.id]);
+      await serverDatabaseModel.markCheckinConfirmed(checkin.id, now);
       return { ...checkin, status: "confirmed" };
     }
   } catch (error) {
@@ -158,19 +165,13 @@ async function ensureCheckinConfirmed(checkin) {
 }
 
 async function getTodayCheckinForUser(userId, todayKey) {
-  let checkin = await get(
-    "SELECT id, status, tx_hash, checkin_date, created_at FROM daily_checkins WHERE user_id = ? AND checkin_date = ?",
-    [userId, todayKey]
-  );
+  let checkin = await serverDatabaseModel.findDailyCheckinByUserAndDate(userId, todayKey);
 
   if (checkin) {
     return checkin;
   }
 
-  checkin = await get(
-    "SELECT id, status, tx_hash, checkin_date, created_at FROM daily_checkins WHERE user_id = ? ORDER BY created_at DESC LIMIT 1",
-    [userId]
-  );
+  checkin = await serverDatabaseModel.findLatestDailyCheckinByUser(userId);
 
   if (!checkin) {
     return null;
@@ -178,15 +179,12 @@ async function getTodayCheckinForUser(userId, todayKey) {
 
   const expectedDate = getBrazilCheckinDateKey(new Date(checkin.created_at));
   if (expectedDate !== checkin.checkin_date) {
-    const normalizedCheckin = await get(
-      "SELECT id, status, tx_hash, checkin_date, created_at FROM daily_checkins WHERE user_id = ? AND checkin_date = ? ORDER BY created_at DESC LIMIT 1",
-      [userId, expectedDate]
-    );
+    const normalizedCheckin = await serverDatabaseModel.findLatestDailyCheckinByUserAndDate(userId, expectedDate);
 
     if (normalizedCheckin) {
       checkin = normalizedCheckin;
     } else {
-      await run("UPDATE daily_checkins SET checkin_date = ? WHERE id = ?", [expectedDate, checkin.id]);
+      await serverDatabaseModel.updateDailyCheckinDate(checkin.id, expectedDate);
       checkin.checkin_date = expectedDate;
     }
   }
@@ -200,10 +198,7 @@ async function hasUsersPowersGamesCheckinColumn() {
   }
 
   try {
-    const row = await get(
-      "SELECT 1 as ok FROM pragma_table_info('users_powers_games') WHERE name = 'checkin_id' LIMIT 1"
-    );
-    usersPowersGamesHasCheckinId = Boolean(row?.ok);
+    usersPowersGamesHasCheckinId = await serverDatabaseModel.hasUsersPowersGamesCheckinColumn();
   } catch {
     usersPowersGamesHasCheckinId = false;
   }
@@ -295,7 +290,8 @@ app.use((req, res, next) => {
   res.setHeader("X-Content-Type-Options", "nosniff");
   // Note: X-XSS-Protection is deprecated in modern browsers, but harmless for legacy clients.
   res.setHeader("X-XSS-Protection", "1; mode=block");
-  res.setHeader("Referrer-Policy", "no-referrer");
+  const isYoutubeWatchPage = req.path === "/games/youtube" || req.path === "/youtube-watch.html";
+  res.setHeader("Referrer-Policy", isYoutubeWatchPage ? "strict-origin-when-cross-origin" : "no-referrer");
   next();
 });
 
@@ -305,6 +301,14 @@ app.use(
     verify: (req, _res, buf) => {
       req.rawBody = Buffer.from(buf).toString("utf8");
     }
+  })
+);
+
+app.use(
+  express.urlencoded({
+    extended: false,
+    limit: "100kb",
+    parameterLimit: 30
   })
 );
 
@@ -429,6 +433,40 @@ const shopListLimiter = createRateLimiter({ windowMs: 60_000, max: 60 });
 const checkinLimiter = createRateLimiter({ windowMs: 60_000, max: 10 });
 const adminLimiter = createRateLimiter({ windowMs: 60_000, max: 120 });
 const zeradsCallbackLimiter = createRateLimiter({ windowMs: 60_000, max: 120 });
+const chatSendLimiter = createRateLimiter({ windowMs: 60_000, max: 30 });
+const youtubeWatchClaimLimiter = createRateLimiter({ windowMs: 60_000, max: 20 });
+
+const CHAT_MAX_MESSAGES = 100;
+
+const serverDatabaseController = createServerDatabaseController({
+  logger,
+  io,
+  publicStateService,
+  engine,
+  onlineStartDate: ONLINE_START_DATE,
+  youtubeRewardGh: YOUTUBE_WATCH_REWARD_GH,
+  youtubeWatchClaimIntervalMs: YOUTUBE_WATCH_CLAIM_INTERVAL_MS,
+  youtubeWatchBoostDurationMs: YOUTUBE_WATCH_BOOST_DURATION_MS,
+  chatMaxMessages: CHAT_MAX_MESSAGES
+});
+
+const MINER_IMAGE_ALLOWED_TYPES = new Map([
+  ["image/png", ".png"],
+  ["image/jpeg", ".jpg"],
+  ["image/webp", ".webp"],
+  ["image/gif", ".gif"]
+]);
+
+function sanitizeMinerImageBaseName(fileName) {
+  return path
+    .basename(String(fileName || "miner-image"))
+    .replace(/\.[^.]+$/, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9_-]/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "")
+    .slice(0, 50) || "miner-image";
+}
 
 const purchaseSchema = z
   .object({
@@ -487,16 +525,268 @@ const checkinVerifySchema = z
   })
   .strict();
 
+const chatMessageSchema = z
+  .object({
+    message: z.string().trim().min(1).max(500)
+  })
+  .strict();
+
+const youtubeWatchClaimSchema = z
+  .object({
+    videoId: z.string().trim().regex(/^[A-Za-z0-9_-]{11}$/).optional()
+  })
+  .strict();
+
+const userIdParamSchema = z
+  .object({
+    id: z.coerce.number().int().positive()
+  })
+  .strict();
+
+const financeActivityQuerySchema = z
+  .object({
+    page: z.coerce.number().int().min(1).max(10_000).optional(),
+    pageSize: z.coerce.number().int().min(5).max(100).optional(),
+    limit: z.coerce.number().int().min(5).max(100).optional(),
+    q: z.string().trim().max(120).optional(),
+    type: z.string().trim().max(30).optional(),
+    status: z.string().trim().max(30).optional(),
+    from: z.string().trim().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+    to: z.string().trim().regex(/^\d{4}-\d{2}-\d{2}$/).optional()
+  })
+  .strict();
+
+const backupsListQuerySchema = z
+  .object({
+    page: z.coerce.number().int().min(1).max(10_000).optional(),
+    pageSize: z.coerce.number().int().min(5).max(200).optional(),
+    q: z.string().trim().max(120).optional(),
+    from: z.string().trim().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+    to: z.string().trim().regex(/^\d{4}-\d{2}-\d{2}$/).optional()
+  })
+  .strict();
+
+const adminYoutubeHistoryQuerySchema = z
+  .object({
+    page: z.coerce.number().int().min(1).max(10_000).optional(),
+    pageSize: z.coerce.number().int().min(5).max(200).optional(),
+    userId: z.coerce.number().int().positive().optional()
+  })
+  .strict();
+
+const backupDeleteSchema = z
+  .object({
+    filename: z.string().trim().min(1).max(255).regex(/^[A-Za-z0-9._-]+$/)
+  })
+  .strict();
+
 app.get("/api/health", healthController.health);
 app.get("/api/shop/miners", requireAuth, shopListLimiter, shopController.listMiners);
 app.post("/api/shop/purchase", requireAuth, shopLimiter, validateBody(purchaseSchema), shopController.purchaseMiner);
 
 app.get("/api/admin/stats", requireAdminAuth, adminLimiter, adminController.getStats);
+app.get("/api/admin/server-metrics", requireAdminAuth, adminLimiter, adminController.getServerMetrics);
 app.get("/api/admin/users", requireAdminAuth, adminLimiter, adminController.listRecentUsers);
+app.get("/api/admin/users/:id/details", requireAdminAuth, adminLimiter, validateParams(userIdParamSchema), serverDatabaseController.getAdminUserDetails);
 app.get("/api/admin/audit", requireAdminAuth, adminLimiter, adminController.listAuditLogs);
 app.put("/api/admin/users/:id/ban", requireAdminAuth, adminLimiter, adminController.setUserBan);
 
+app.get("/api/admin/finance/overview", requireAdminAuth, adminLimiter, serverDatabaseController.getAdminFinanceOverview);
+app.get("/api/admin/finance/activity", requireAdminAuth, adminLimiter, validateQuery(financeActivityQuerySchema), serverDatabaseController.getAdminFinanceActivity);
+app.get("/api/admin/youtube/stats", requireAdminAuth, adminLimiter, serverDatabaseController.getAdminYoutubeStats);
+app.get("/api/admin/youtube/history", requireAdminAuth, adminLimiter, validateQuery(adminYoutubeHistoryQuerySchema), serverDatabaseController.getAdminYoutubeHistory);
+
 app.get("/api/admin/miners", requireAdminAuth, adminLimiter, adminController.listMiners);
+app.get("/api/admin/export-db", requireAdminAuth, adminLimiter, async (req, res) => {
+  let backupFile = null;
+
+  try {
+    const backupConfig = getBackupConfig();
+    const exportResult = await createDatabaseBackup({
+      run,
+      backupDir: backupConfig.backupDir,
+      filenamePrefix: "admin-export-db-",
+      logger
+    });
+
+    backupFile = exportResult?.backupFile || null;
+    if (!backupFile) {
+      res.status(500).json({ ok: false, message: "Unable to export database." });
+      return;
+    }
+
+    logger.info("Admin requested database export", {
+      adminId: req.admin?.id || null,
+      backupFile,
+      method: exportResult?.method || null
+    });
+
+    res.download(backupFile, path.basename(backupFile), async () => {
+      if (!backupFile) return;
+      try {
+        await fs.unlink(backupFile);
+      } catch {
+        // ignore cleanup errors
+      }
+    });
+  } catch (error) {
+    logger.error("Admin database export failed", {
+      adminId: req.admin?.id || null,
+      error: error?.message || "unknown_error"
+    });
+
+    if (!res.headersSent) {
+      res.status(500).json({ ok: false, message: "Unable to export database." });
+    }
+
+    if (backupFile) {
+      try {
+        await fs.unlink(backupFile);
+      } catch {
+        // ignore cleanup errors
+      }
+    }
+  }
+});
+
+app.get("/api/admin/backups", requireAdminAuth, adminLimiter, validateQuery(backupsListQuerySchema), async (_req, res) => {
+  try {
+    const page = Math.max(1, Number(_req.query?.page || 1));
+    const pageSize = Math.max(5, Math.min(200, Number(_req.query?.pageSize || 30)));
+    const offset = (page - 1) * pageSize;
+    const queryText = String(_req.query?.q || "").trim().toLowerCase();
+    const fromDate = String(_req.query?.from || "").trim();
+    const toDate = String(_req.query?.to || "").trim();
+    const backupConfig = getBackupConfig();
+    const entries = await fs.readdir(backupConfig.backupDir, { withFileTypes: true }).catch(() => []);
+    const files = [];
+
+    for (const entry of entries) {
+      if (!entry.isFile()) continue;
+      const name = String(entry.name || "");
+      if (!name.endsWith(".db") && !name.endsWith(".tar.gz")) continue;
+
+      const fullPath = path.join(backupConfig.backupDir, name);
+      const stat = await fs.stat(fullPath).catch(() => null);
+      if (!stat) continue;
+
+      files.push({
+        name,
+        size: Number(stat.size || 0),
+        modifiedAt: Number(stat.mtimeMs || 0)
+      });
+    }
+
+    let filtered = files;
+
+    if (queryText) {
+      filtered = filtered.filter((entry) => String(entry.name || "").toLowerCase().includes(queryText));
+    }
+
+    if (fromDate) {
+      const fromMs = Date.parse(`${fromDate}T00:00:00Z`);
+      if (Number.isFinite(fromMs)) {
+        filtered = filtered.filter((entry) => Number(entry.modifiedAt || 0) >= fromMs);
+      }
+    }
+
+    if (toDate) {
+      const toMs = Date.parse(`${toDate}T23:59:59.999Z`);
+      if (Number.isFinite(toMs)) {
+        filtered = filtered.filter((entry) => Number(entry.modifiedAt || 0) <= toMs);
+      }
+    }
+
+    filtered.sort((a, b) => b.modifiedAt - a.modifiedAt);
+    const total = filtered.length;
+    const paged = filtered.slice(offset, offset + pageSize);
+    res.json({ ok: true, files: paged, page, pageSize, total });
+  } catch (error) {
+    logger.error("Admin backups list failed", { error: error?.message });
+    res.status(500).json({ ok: false, message: "Unable to list backups." });
+  }
+});
+
+app.delete("/api/admin/backups", requireAdminAuth, adminLimiter, validateBody(backupDeleteSchema), async (req, res) => {
+  try {
+    const backupConfig = getBackupConfig();
+    const filename = String(req.body.filename || "").trim();
+
+    const safeName = path.basename(filename);
+    if (safeName !== filename || (!safeName.endsWith(".db") && !safeName.endsWith(".tar.gz"))) {
+      res.status(400).json({ ok: false, message: "Invalid backup filename." });
+      return;
+    }
+
+    const target = path.join(backupConfig.backupDir, safeName);
+    await fs.unlink(target);
+    res.json({ ok: true, deleted: safeName });
+  } catch (error) {
+    logger.error("Admin backup delete failed", { error: error?.message });
+    res.status(500).json({ ok: false, message: "Unable to delete backup." });
+  }
+});
+app.post(
+  "/api/admin/miners/upload-image",
+  requireAdminAuth,
+  adminLimiter,
+  express.raw({
+    type: (req) => MINER_IMAGE_ALLOWED_TYPES.has(String(req.headers["content-type"] || "").split(";")[0].trim()),
+    limit: "8mb"
+  }),
+  async (req, res) => {
+    try {
+      const contentType = String(req.headers["content-type"] || "").split(";")[0].trim();
+      const ext = MINER_IMAGE_ALLOWED_TYPES.get(contentType);
+
+      if (!ext) {
+        res.status(415).json({ ok: false, message: "Unsupported image type. Use PNG, JPG, WEBP, or GIF." });
+        return;
+      }
+
+      if (!Buffer.isBuffer(req.body) || req.body.length === 0) {
+        res.status(400).json({ ok: false, message: "Image file is required." });
+        return;
+      }
+
+      const maxSizeBytes = 8 * 1024 * 1024;
+      if (req.body.length > maxSizeBytes) {
+        res.status(400).json({ ok: false, message: "Image too large. Max 8MB." });
+        return;
+      }
+
+      const originalName = String(req.headers["x-file-name"] || "").trim();
+      const baseName = sanitizeMinerImageBaseName(originalName);
+      const uploadsDir = path.join(__dirname, "public", "assets", "machines", "uploaded");
+      await fs.mkdir(uploadsDir, { recursive: true });
+
+      let fileName = `${baseName}${ext}`;
+      let filePath = path.join(uploadsDir, fileName);
+      for (let suffix = 2; suffix <= 9999; suffix += 1) {
+        try {
+          await fs.access(filePath);
+          fileName = `${baseName}-${suffix}${ext}`;
+          filePath = path.join(uploadsDir, fileName);
+        } catch {
+          break;
+        }
+      }
+
+      await fs.writeFile(filePath, req.body);
+
+      res.json({
+        ok: true,
+        imageUrl: `/assets/machines/uploaded/${fileName}`
+      });
+    } catch (error) {
+      logger.error("Admin miner image upload failed", {
+        error: error?.message,
+        adminId: req.admin?.id || null
+      });
+      res.status(500).json({ ok: false, message: "Unable to upload image." });
+    }
+  }
+);
 app.post("/api/admin/miners", requireAdminAuth, adminLimiter, adminController.createMiner);
 app.put("/api/admin/miners/:id", requireAdminAuth, adminLimiter, adminController.updateMiner);
 
@@ -536,6 +826,9 @@ app.post("/api/racks/update", requireAuth, validateBody(rackUpdateSchema), racks
 app.get("/api/checkin/status", requireAuth, checkinLimiter, checkinController.getStatus);
 app.post("/api/checkin/verify", requireAuth, checkinLimiter, validateBody(checkinVerifySchema), checkinController.verify);
 
+app.get("/api/chat/messages", requireAuth, serverDatabaseController.listChatMessages);
+app.post("/api/chat/messages", requireAuth, chatSendLimiter, validateBody(chatMessageSchema), serverDatabaseController.createChatMessage);
+
 app.get("/zeradsptc.php", zeradsCallbackLimiter, zeradsController.handlePtcCallback);
 app.post("/zeradsptc.php", zeradsCallbackLimiter, zeradsController.handlePtcCallback);
 
@@ -558,89 +851,9 @@ app.get("/api/state", async (req, res) => {
   }
 });
 
-app.get("/api/landing-stats", async (_req, res) => {
-  try {
-    const usersRow = await get("SELECT COUNT(*) as total FROM users");
-    const payoutsRow = await get("SELECT COALESCE(SUM(amount_pol), 0) as total FROM payouts");
-    const withdrawalsRow = await get(
-      "SELECT COALESCE(SUM(amount), 0) as total FROM transactions WHERE type = 'withdrawal' AND status = 'completed'"
-    );
-
-    const startMs = Date.parse(`${ONLINE_START_DATE}T00:00:00Z`);
-    const nowMs = Date.now();
-    const daysOnline = Math.max(1, Math.floor((nowMs - startMs) / (1000 * 60 * 60 * 24)) + 1);
-
-    res.json({
-      ok: true,
-      registeredUsers: usersRow?.total || 0,
-      totalPaid: Number(payoutsRow?.total || 0) + Number(withdrawalsRow?.total || 0),
-      daysOnline
-    });
-  } catch {
-    res.status(500).json({ ok: false, message: "Unable to load landing stats." });
-  }
-});
-
-app.get("/api/recent-payments", async (_req, res) => {
-  try {
-    const payments = await all(
-      `
-        SELECT
-          p.id,
-          p.amount_pol,
-          p.source,
-          p.tx_hash,
-          p.created_at,
-          COALESCE(NULLIF(TRIM(u.username), ''), u.name, 'Miner') AS username
-        FROM payouts p
-        INNER JOIN users u ON u.id = p.user_id
-        ORDER BY p.created_at DESC
-        LIMIT 10
-      `
-    );
-
-    res.json({
-      ok: true,
-      payments: payments.map((payment) => ({
-        id: payment.id,
-        username: payment.username,
-        amountPol: Number(payment.amount_pol || 0),
-        source: payment.source || "mining",
-        txHash: payment.tx_hash || null,
-        createdAt: Number(payment.created_at || 0)
-      }))
-    });
-  } catch {
-    res.status(500).json({ ok: false, message: "Unable to load recent payments." });
-  }
-});
-
-app.get("/api/network-stats", async (_req, res) => {
-  try {
-    const usersRow = await get("SELECT COUNT(*) as total FROM users");
-    const payoutsRow = await get("SELECT COALESCE(SUM(amount_pol), 0) as total FROM payouts");
-    const withdrawalsRow = await get(
-      "SELECT COALESCE(SUM(amount), 0) as total FROM transactions WHERE type = 'withdrawal' AND status = 'completed'"
-    );
-    const baseNetworkRow = await get("SELECT COALESCE(SUM(base_hash_rate), 0) as total FROM users_temp_power");
-    const gameNetworkHash = await publicStateService.getActiveGameHashRateTotal();
-
-    const startMs = Date.parse(`${ONLINE_START_DATE}T00:00:00Z`);
-    const nowMs = Date.now();
-    const daysOnline = Math.max(1, Math.floor((nowMs - startMs) / (1000 * 60 * 60 * 24)) + 1);
-
-    res.json({
-      ok: true,
-      registeredUsers: usersRow?.total || 0,
-      totalPaid: Number(payoutsRow?.total || 0) + Number(withdrawalsRow?.total || 0),
-      daysOnline,
-      networkHashRate: Number(baseNetworkRow?.total || 0) + Number(gameNetworkHash || 0),
-      activeGameHashRate: Number(gameNetworkHash || 0)
-    });
-  } catch {
-    res.status(500).json({ ok: false, message: "Unable to load network stats." });
-  }
-});
+app.get("/api/landing-stats", serverDatabaseController.getLandingStats);
+app.get("/api/recent-payments", serverDatabaseController.getRecentPayments);
+app.get("/api/network-stats", serverDatabaseController.getNetworkStats);
 
 app.get("/api/network-ranking", async (req, res) => {
   try {
@@ -657,34 +870,10 @@ app.get("/api/network-ranking", async (req, res) => {
   }
 });
 
-app.get("/api/estimated-reward", requireAuth, async (req, res) => {
-  try {
-    const userId = req.user?.id;
-    const userBaseRow = await get("SELECT COALESCE(base_hash_rate, 0) as total FROM users_temp_power WHERE user_id = ?", [
-      userId
-    ]);
-    const baseNetworkRow = await get("SELECT COALESCE(SUM(base_hash_rate), 0) as total FROM users_temp_power");
-    const userGameHash = await publicStateService.getUserGameHashRate(userId);
-    const gameNetworkHash = await publicStateService.getActiveGameHashRateTotal();
-
-    const userHashRate = Number(userBaseRow?.total || 0) + Number(userGameHash || 0);
-    const networkHashRate = Number(baseNetworkRow?.total || 0) + Number(gameNetworkHash || 0);
-    const share = networkHashRate > 0 ? userHashRate / networkHashRate : 0;
-    const blockReward = Number(engine.rewardBase || 0);
-
-    res.json({
-      ok: true,
-      userHashRate,
-      networkHashRate,
-      share,
-      blockReward,
-      estimatedReward: blockReward * share,
-      tokenSymbol: engine.tokenSymbol
-    });
-  } catch {
-    res.status(500).json({ ok: false, message: "Unable to load estimated reward." });
-  }
-});
+app.get("/api/estimated-reward", requireAuth, serverDatabaseController.getEstimatedReward);
+app.get("/api/games/youtube/status", requireAuth, serverDatabaseController.getYoutubeStatus);
+app.get("/api/games/youtube/stats", requireAuth, serverDatabaseController.getYoutubeStats);
+app.post("/api/games/youtube/claim", requireAuth, youtubeWatchClaimLimiter, validateBody(youtubeWatchClaimSchema), serverDatabaseController.claimYoutubeReward);
 
 app.post("/api/games/memory/claim", requireAuth, async (req, res) => {
   try {
@@ -697,20 +886,17 @@ app.post("/api/games/memory/claim", requireAuth, async (req, res) => {
     const boosted = Boolean(confirmedCheckin && confirmedCheckin.status === "confirmed");
     const expiresInMs = boosted ? 7 * 24 * 60 * 60 * 1000 : 24 * 60 * 60 * 1000;
     const expiresAt = now + expiresInMs;
-    const game = await getOrCreateGame("memory-game", "Memory Game");
+    const game = await serverDatabaseModel.getOrCreateGame("memory-game", "Memory Game");
     const hasCheckinIdColumn = await hasUsersPowersGamesCheckinColumn();
-
-    if (hasCheckinIdColumn) {
-      await run(
-        "INSERT INTO users_powers_games (user_id, game_id, hash_rate, played_at, expires_at, checkin_id) VALUES (?, ?, ?, ?, ?, ?)",
-        [user.id, game.id, MEMORY_GAME_REWARD_GH, now, expiresAt, boosted ? confirmedCheckin.id : null]
-      );
-    } else {
-      await run(
-        "INSERT INTO users_powers_games (user_id, game_id, hash_rate, played_at, expires_at) VALUES (?, ?, ?, ?, ?)",
-        [user.id, game.id, MEMORY_GAME_REWARD_GH, now, expiresAt]
-      );
-    }
+    await serverDatabaseModel.insertMemoryClaim({
+      userId: user.id,
+      gameId: game.id,
+      rewardGh: MEMORY_GAME_REWARD_GH,
+      now,
+      expiresAt,
+      checkinId: hasCheckinIdColumn && boosted ? confirmedCheckin.id : null
+    });
+    await publicStateService.syncUserBaseHashRate(user.id);
 
     res.json({
       ok: true,
@@ -727,49 +913,9 @@ app.post("/api/games/memory/claim", requireAuth, async (req, res) => {
   }
 });
 
-async function getOrCreateGame(slug, name) {
-  const existing = await get("SELECT id, name, slug FROM games WHERE slug = ?", [slug]);
-  if (existing) {
-    return existing;
-  }
-
-  const now = Date.now();
-  let insert;
-
-  try {
-    insert = await run(
-      "INSERT INTO games (name, slug, is_active, created_at) VALUES (?, ?, ?, ?)",
-      [name, slug, 1, now]
-    );
-  } catch (error) {
-    const message = String(error?.message || "").toLowerCase();
-    if (!message.includes("is_active") && !message.includes("created_at")) {
-      throw error;
-    }
-
-    insert = await run("INSERT INTO games (name, slug) VALUES (?, ?)", [name, slug]);
-  }
-
-  return { id: insert.lastID, name, slug };
-}
-
 async function restoreMiningEngineState() {
   try {
-    const maxBlockRow = await get("SELECT COALESCE(MAX(block_number), 0) AS max_block FROM mining_rewards_log");
-    const totalMintedRow = await get("SELECT COALESCE(SUM(reward_amount), 0) AS total_minted FROM mining_rewards_log");
-    const recentBlocks = await all(
-      `
-        SELECT
-          block_number,
-          COALESCE(SUM(reward_amount), 0) AS reward,
-          COUNT(DISTINCT user_id) AS miner_count,
-          MAX(created_at) AS timestamp
-        FROM mining_rewards_log
-        GROUP BY block_number
-        ORDER BY block_number DESC
-        LIMIT 12
-      `
-    );
+    const { maxBlockRow, totalMintedRow, recentBlocks } = await serverDatabaseModel.getMiningEngineStateRows();
 
     const maxBlock = Number(maxBlockRow?.max_block || 0);
     const restoredBlockNumber = Math.max(1, maxBlock + 1);
@@ -809,33 +955,8 @@ async function persistMinerProfile(miner) {
 
   const now = Date.now();
   try {
-    await run(
-      `
-        INSERT INTO users_temp_power (user_id, username, wallet_address, rigs, base_hash_rate, balance, lifetime_mined, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-        ON CONFLICT(user_id) DO UPDATE SET
-          username = excluded.username,
-          wallet_address = excluded.wallet_address,
-          rigs = excluded.rigs,
-          base_hash_rate = excluded.base_hash_rate,
-          balance = excluded.balance,
-          lifetime_mined = excluded.lifetime_mined,
-          updated_at = excluded.updated_at
-      `,
-      [
-        miner.userId,
-        miner.username,
-        miner.walletAddress,
-        miner.rigs,
-        miner.baseHashRate,
-        miner.balance,
-        miner.lifetimeMined,
-        now,
-        now
-      ]
-    );
-
-    await run("UPDATE users SET pol_balance = ? WHERE id = ?", [miner.balance, miner.userId]);
+    await serverDatabaseModel.upsertMinerProfile(miner, now);
+    await serverDatabaseModel.updateUserPolBalance(miner.userId, miner.balance);
 
     logger.debug("Miner profile persisted", {
       userId: miner.userId,
@@ -852,9 +973,7 @@ async function persistMinerProfile(miner) {
 }
 
 async function syncEngineMiners() {
-  const profiles = await all(
-    "SELECT user_id, username, wallet_address, rigs, base_hash_rate, balance, lifetime_mined FROM users_temp_power"
-  );
+  const profiles = await serverDatabaseModel.listTempPowerProfiles();
 
   let createdCount = 0;
   let updatedCount = 0;
@@ -885,8 +1004,12 @@ async function syncEngineMiners() {
     existingMiner.walletAddress = profile.wallet_address || null;
     existingMiner.rigs = Number(profile.rigs || 1);
     existingMiner.baseHashRate = Number(profile.base_hash_rate || 0);
-    existingMiner.balance = Number(profile.balance || 0);
-    existingMiner.lifetimeMined = Number(profile.lifetime_mined || 0);
+    if (!Number.isFinite(existingMiner.balance)) {
+      existingMiner.balance = Number(profile.balance || 0);
+    }
+    if (!Number.isFinite(existingMiner.lifetimeMined)) {
+      existingMiner.lifetimeMined = Number(profile.lifetime_mined || 0);
+    }
     updatedCount += 1;
   }
 
@@ -945,7 +1068,7 @@ initializeDatabase()
 
     // Sync baseHashRate for all users on startup
     try {
-      const users = await all("SELECT DISTINCT user_id FROM users_temp_power WHERE user_id IS NOT NULL");
+      const users = await serverDatabaseModel.listDistinctTempPowerUserIds();
       const userIds = users.map((u) => u.user_id);
       logger.info("Syncing baseHashRate for all users on startup", { userCount: userIds.length });
       await Promise.all(userIds.map((userId) => publicStateService.syncUserBaseHashRate(userId)));

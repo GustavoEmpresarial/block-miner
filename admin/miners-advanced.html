@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>BlockMiner | Miners Advanced</title>
+    <link rel="stylesheet" href="/admin/styles.css" />
+  </head>
+  <body>
+    <main class="admin-app">
+      <header class="admin-header">
+        <div>
+          <h1>Miners Advanced</h1>
+          <p>Manage visibility in shop, pricing and status quickly.</p>
+        </div>
+        <div style="display:flex;gap:.6rem;align-items:center;">
+          <span id="status" class="status"></span>
+          <a class="btn" href="/admin/">Back</a>
+          <button class="btn" id="refreshBtn" type="button">Refresh</button>
+        </div>
+      </header>
+
+      <section class="card">
+        <div class="form-grid" style="grid-template-columns: 1.2fr auto; margin-bottom: .8rem;">
+          <label>
+            Search (name/slug)
+            <input id="searchInput" type="text" placeholder="name ou slug" />
+          </label>
+          <button class="btn" id="applyBtn" type="button">Apply</button>
+        </div>
+        <div class="table-wrapper">
+          <table>
+            <thead>
+              <tr>
+                <th>ID</th><th>Name</th><th>Slug</th><th>GHS</th><th>Price</th><th>Shop</th><th>Active</th><th>Save</th>
+              </tr>
+            </thead>
+            <tbody id="minersTable"></tbody>
+          </table>
+        </div>
+        <div style="display:flex;justify-content:flex-end;gap:.6rem;margin-top:.8rem;">
+          <button class="btn small" id="prevBtn" type="button">Prev</button>
+          <span id="pageInfo" class="status"></span>
+          <button class="btn small" id="nextBtn" type="button">Next</button>
+        </div>
+      </section>
+    </main>
+    <script src="/admin/miners-advanced.js"></script>
+  </body>
+</html>

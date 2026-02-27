@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>BlockMiner | Server Monitor</title>
+    <link rel="stylesheet" href="/admin/styles.css" />
+  </head>
+  <body>
+    <main class="admin-app">
+      <header class="admin-header">
+        <div>
+          <h1>Server Monitor</h1>
+          <p>Real-time host metrics collected directly from the running server.</p>
+        </div>
+        <div style="display: flex; align-items: center; gap: 0.6rem;">
+          <a class="btn" href="/admin/index.html">Back to Admin</a>
+          <button class="btn" id="refreshButton" type="button">Refresh</button>
+        </div>
+      </header>
+
+      <section class="card">
+        <div class="table-header">
+          <h2>Live Metrics</h2>
+          <span id="statusMessage" class="status"></span>
+        </div>
+        <div id="statsGrid" class="stats-grid"></div>
+      </section>
+
+      <section class="card">
+        <div class="table-header">
+          <h2>Real-time Charts</h2>
+          <span id="historyInfo" class="status">Waiting for samples...</span>
+        </div>
+
+        <div class="charts-grid">
+          <article class="chart-card">
+            <div class="chart-header">
+              <h3>CPU usage</h3>
+              <span id="cpuChartCurrent" class="chart-current">--</span>
+            </div>
+            <svg id="cpuChart" class="chart-svg" viewBox="0 0 420 150" preserveAspectRatio="none" aria-label="CPU usage chart"></svg>
+            <div id="cpuChartMeta" class="chart-meta">--</div>
+          </article>
+
+          <article class="chart-card">
+            <div class="chart-header">
+              <h3>RAM usage</h3>
+              <span id="ramChartCurrent" class="chart-current">--</span>
+            </div>
+            <svg id="ramChart" class="chart-svg" viewBox="0 0 420 150" preserveAspectRatio="none" aria-label="RAM usage chart"></svg>
+            <div id="ramChartMeta" class="chart-meta">--</div>
+          </article>
+
+          <article class="chart-card">
+            <div class="chart-header">
+              <h3>Disk usage</h3>
+              <span id="diskChartCurrent" class="chart-current">--</span>
+            </div>
+            <svg id="diskChart" class="chart-svg" viewBox="0 0 420 150" preserveAspectRatio="none" aria-label="Disk usage chart"></svg>
+            <div id="diskChartMeta" class="chart-meta">--</div>
+          </article>
+
+          <article class="chart-card">
+            <div class="chart-header">
+              <h3>Node RSS</h3>
+              <span id="rssChartCurrent" class="chart-current">--</span>
+            </div>
+            <svg id="rssChart" class="chart-svg" viewBox="0 0 420 150" preserveAspectRatio="none" aria-label="Node RSS chart"></svg>
+            <div id="rssChartMeta" class="chart-meta">--</div>
+          </article>
+        </div>
+      </section>
+    </main>
+
+    <script src="/admin/server-metrics.js"></script>
+  </body>
+</html>

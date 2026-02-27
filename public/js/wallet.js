@@ -11,19 +11,6 @@ const elements = {
   get connectWalletBtn() { return document.getElementById("connectWalletBtn"); },
   get disconnectWalletBtn() { return document.getElementById("disconnectWalletBtn"); },
   get copyAddressBtn() { return document.getElementById("copyAddressBtn"); },
-  
-  // Deposit elements
-  get depositAddress() { return document.getElementById("depositAddress"); },
-  get copyDepositAddressBtn() { return document.getElementById("copyDepositAddressBtn"); },
-  get quickDepositSection() { return document.getElementById("quickDepositSection"); },
-  get quickDepositForm() { return document.getElementById("quickDepositForm"); },
-  get depositAmount() { return document.getElementById("depositAmount"); },
-  get depositSummaryAmount() { return document.getElementById("depositSummaryAmount"); },
-  get depositSummaryFee() { return document.getElementById("depositSummaryFee"); },
-  get depositSummaryTotal() { return document.getElementById("depositSummaryTotal"); },
-  get quickDepositBtn() { return document.getElementById("quickDepositBtn"); },
-  get pendingDepositsSection() { return document.getElementById("pendingDepositsSection"); },
-  get pendingDepositsList() { return document.getElementById("pendingDepositsList"); },
 
   // Withdrawal elements
   get withdrawForm() { return document.getElementById("withdrawForm"); },
@@ -177,20 +164,10 @@ function updateWalletUI() {
     elements.walletNotConnected.style.display = "none";
     elements.walletConnected.style.display = "block";
     elements.connectedAddress.textContent = state.walletAddress;
-    
-    // Show quick deposit section when wallet is connected
-    if (elements.quickDepositSection) {
-      elements.quickDepositSection.style.display = "block";
-    }
   } else {
     elements.walletNotConnected.style.display = "block";
     elements.walletConnected.style.display = "none";
     elements.connectedAddress.textContent = "";
-    
-    // Hide quick deposit section when wallet is not connected
-    if (elements.quickDepositSection) {
-      elements.quickDepositSection.style.display = "none";
-    }
   }
 }
 
@@ -200,24 +177,19 @@ async function loadDepositAddress() {
     const response = await fetch("/api/wallet/deposit-address", { credentials: "include" });
 
     const data = await response.json();
-    if (data.ok && data.depositAddress) {
-      elements.depositAddress.textContent = data.depositAddress;
+    const address = String(data.depositAddress || data.address || "").trim();
+
+    if (data.ok && address) {
+      state.depositAddress = address;
+    } else {
+      state.depositAddress = null;
+      window.notify?.(data.message || "Erro ao carregar endereço de depósito", "error");
     }
   } catch (error) {
     console.error("Error loading deposit address:", error);
-    elements.depositAddress.textContent = "Error loading address";
+    state.depositAddress = null;
+    window.notify?.("Erro ao carregar endereço de depósito", "error");
   }
-}
-
-function updateDepositSummary() {
-  if (!elements.depositAmount) return;
-
-  const { amount } = parseDepositAmount(elements.depositAmount.value);
-  const estimatedFee = 0.001; // Estimated gas fee
-  const total = amount + estimatedFee;
-
-  elements.depositSummaryAmount.textContent = `${formatNumber(amount)} POL`;
-  elements.depositSummaryTotal.textContent = `~${formatNumber(total)} POL`;
 }
 
 function normalizeDecimalString(value) {
@@ -255,119 +227,178 @@ function decimalToWeiHex(amountStr) {
   return `0x${wei.toString(16)}`;
 }
 
-async function handleQuickDeposit(event) {
-  event.preventDefault();
-
-  if (typeof window.ethereum === "undefined") {
-    window.notify?.("Wallet not detected. Install Trust Wallet or MetaMask extension.", "error");
-    return;
-  }
-
-  const { amount, normalized } = parseDepositAmount(elements.depositAmount.value);
-  
-  if (!amount || amount < 0.01) {
-    window.notify?.("Minimum 0.01 POL", "error");
-    return;
-  }
-
-  try {
-    // Get deposit address from server
-    const response = await fetch("/api/wallet/deposit-address", { credentials: "include" });
-
-    const data = await response.json();
-    if (!data.ok || !data.depositAddress) {
-      window.notify?.("Error getting deposit address", "error");
-      return;
-    }
-
-    const depositAddress = data.depositAddress;
-    
-    // Disable button
-    elements.quickDepositBtn.disabled = true;
-    elements.quickDepositBtn.innerHTML = '<i class="bi bi-hourglass-split"></i> Sending...';
-
-    // Convert amount to wei (18 decimals for POL)
-    const amountWei = decimalToWeiHex(normalized);
-
-    // Request transaction via wallet
-    const txHash = await window.ethereum.request({
-      method: "eth_sendTransaction",
-      params: [{
-        from: state.walletAddress,
-        to: depositAddress,
-        value: amountWei,
-        chainId: "0x89" // Polygon mainnet
-      }]
-    });
-
-    window.notify?.("Transaction sent! Processing...", "info");
-
-    // Notify server about the deposit
-    await fetch("/api/wallet/deposit", {
+async function verifyDepositTxWithRetry(txHash, maxAttempts = 18, delayMs = 5000) {
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    const response = await fetch("/api/wallet/verify-deposit", {
       method: "POST",
       credentials: "include",
       headers: {
         "Content-Type": "application/json"
       },
-      body: JSON.stringify({
-        txHash,
-        amount: normalized,
-        fromAddress: state.walletAddress
-      })
+      body: JSON.stringify({ txHash })
     });
 
-    elements.depositAmount.value = "";
-    updateDepositSummary();
-    
-    window.notify?.("Deposit sent! Balance will update after confirmation.", "success");
-    
-    // Refresh balance after a delay
-    setTimeout(() => loadBalance(), 5000);
-    
+    let data = null;
+    try {
+      data = await response.json();
+    } catch {
+      data = null;
+    }
+
+    if (data?.ok && data?.status !== "pending") {
+      return data;
+    }
+
+    if (data?.ok && data?.status === "pending") {
+      await new Promise((resolve) => setTimeout(resolve, delayMs));
+      continue;
+    }
+
+    if (response.status === 400 && /not found|invalid/i.test(String(data?.message || ""))) {
+      await new Promise((resolve) => setTimeout(resolve, delayMs));
+      continue;
+    }
+
+    throw new Error(data?.message || "Falha ao verificar depósito");
+  }
+
+  return { ok: true, status: "pending", message: "Transação enviada. Aguarde a confirmação da rede." };
+}
+
+async function handleExtensionDeposit(event) {
+  event.preventDefault();
+
+  if (typeof window.ethereum === "undefined") {
+    window.notify?.("Nenhuma extensão de carteira detectada no navegador.", "error");
+    return;
+  }
+
+  if (!state.walletAddress) {
+    window.notify?.("Conecte sua carteira antes de depositar.", "error");
+    return;
+  }
+
+  const { amount, normalized } = parseDepositAmount(elements.depositExtensionAmount?.value || "");
+  if (!amount || amount < 0.01) {
+    window.notify?.("Informe um valor válido (mínimo 0.01 POL).", "error");
+    return;
+  }
+
+  if (!state.depositAddress) {
+    await loadDepositAddress();
+  }
+
+  if (!state.depositAddress) {
+    window.notify?.("Não foi possível obter o endereço interno de depósito.", "error");
+    return;
+  }
+
+  const originalText = elements.depositExtensionBtn?.innerHTML || "Depositar com Extensão";
+
+  try {
+    if (elements.depositExtensionBtn) {
+      elements.depositExtensionBtn.disabled = true;
+      elements.depositExtensionBtn.innerHTML = '<i class="bi bi-hourglass-split"></i> Confirmando...';
+    }
+
+    const txHash = await window.ethereum.request({
+      method: "eth_sendTransaction",
+      params: [
+        {
+          from: state.walletAddress,
+          to: state.depositAddress,
+          value: decimalToWeiHex(normalized),
+          chainId: "0x89"
+        }
+      ]
+    });
+
+    window.notify?.("Transação enviada. Aguardando confirmação na rede...", "info");
+
+    if (elements.depositExtensionBtn) {
+      elements.depositExtensionBtn.innerHTML = '<i class="bi bi-arrow-repeat"></i> Validando...';
+    }
+
+    const verification = await verifyDepositTxWithRetry(txHash);
+
+    if (verification?.ok && verification?.status !== "pending") {
+      window.notify?.(verification.message || "Depósito confirmado e saldo atualizado.", "success");
+      if (elements.depositExtensionAmount) {
+        elements.depositExtensionAmount.value = "";
+      }
+      await loadBalance();
+      await loadTransactionHistory();
+      return;
+    }
+
+    window.notify?.(verification?.message || "Transação enviada. Aguarde a confirmação da rede.", "info");
   } catch (error) {
-    console.error("Error processing deposit:", error);
-    if (error.code === 4001) {
-      window.notify?.("Transaction cancelled", "info");
+    console.error("Error processing extension deposit:", error);
+    if (error?.code === 4001) {
+      window.notify?.("Transação cancelada na carteira.", "info");
     } else {
-      window.notify?.("Error processing deposit", "error");
+      window.notify?.(String(error?.message || "Falha ao processar depósito."), "error");
     }
   } finally {
-    elements.quickDepositBtn.disabled = false;
-    elements.quickDepositBtn.innerHTML = '<i class="bi bi-arrow-up-circle"></i> Deposit';
+    if (elements.depositExtensionBtn) {
+      elements.depositExtensionBtn.disabled = false;
+      elements.depositExtensionBtn.innerHTML = originalText;
+    }
   }
 }
 
-function copyDepositAddress() {
-  const address = elements.depositAddress.textContent;
+// Manual deposit verification
+async function handleVerifyDeposit(event) {
+  event.preventDefault();
+
+  const txHash = elements.verifyTxHash.value.trim();
   
-  if (!address || address === "Loading..." || address === "Error loading address") {
-    window.notify?.("No address to copy", "error");
+  if (!txHash) {
+    window.notify?.("Por favor, insira o hash da transação", "error");
     return;
   }
 
-  if (navigator.clipboard?.writeText) {
-    navigator.clipboard.writeText(address).then(() => {
-      window.notify?.("Deposit address copied!", "success");
-    }).catch(() => {
-      window.notify?.("Failed to copy address", "error");
-    });
+  if (!/^0x[a-fA-F0-9]{64}$/.test(txHash)) {
+    window.notify?.("Hash de transação inválido", "error");
     return;
   }
 
-  // Fallback for older browsers
-  const textarea = document.createElement("textarea");
-  textarea.value = address;
-  textarea.style.position = "fixed";
-  textarea.style.opacity = "0";
-  document.body.appendChild(textarea);
   try {
-    textarea.select();
-    const success = document.execCommand("copy");
-    window.notify?.(success ? "Deposit address copied!" : "Failed to copy address", success ? "success" : "error");
-  } catch {
-    window.notify?.("Failed to copy address", "error");
+    // Disable button
+    elements.verifyDepositBtn.disabled = true;
+    elements.verifyDepositBtn.innerHTML = '<i class="bi bi-hourglass-split"></i> Verificando...';
+
+    const response = await fetch("/api/wallet/verify-deposit", {
+      method: "POST",
+      credentials: "include",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ txHash })
+    });
+
+    const data = await response.json();
+    
+    if (data.ok) {
+      window.notify?.(data.message, "success");
+      elements.verifyTxHash.value = "";
+      
+      // Refresh balance
+      await loadBalance();
+      
+      // Refresh transaction history
+      await loadTransactionHistory();
+    } else {
+      window.notify?.(data.message || "Erro ao processar depósito", "error");
+    }
+
+  } catch (error) {
+    console.error("Error reporting deposit:", error);
+    window.notify?.("Erro de conexão. Tente novamente.", "error");
   } finally {
-    document.body.removeChild(textarea);
+    // Re-enable button
+    elements.verifyDepositBtn.disabled = false;
+    elements.verifyDepositBtn.innerHTML = '<i class="bi bi-search"></i> Verificar e Creditar Depósito';
   }
 }
 
@@ -573,7 +604,6 @@ function setupEventListeners() {
   
   const connectWalletBtn = document.getElementById("connectWalletBtn");
   const disconnectWalletBtn = document.getElementById("disconnectWalletBtn");
-  const depositAmount = document.getElementById("depositAmount");
   
   if (connectWalletBtn) {
     connectWalletBtn.addEventListener("click", (e) => {
@@ -598,19 +628,6 @@ function setupEventListeners() {
     elements.refreshHistoryBtn.addEventListener("click", loadTransactionHistory);
   }
   
-  // Deposit event listeners
-  if (elements.copyDepositAddressBtn) {
-    elements.copyDepositAddressBtn.addEventListener("click", copyDepositAddress);
-  }
-  
-  if (elements.quickDepositForm) {
-    elements.quickDepositForm.addEventListener("submit", handleQuickDeposit);
-  }
-  
-  if (depositAmount) {
-    depositAmount.addEventListener("input", updateDepositSummary);
-  }
-
   if (elements.withdrawAmount) {
     elements.withdrawAmount.addEventListener("input", updateWithdrawSummary);
   }
@@ -646,7 +663,6 @@ async function init() {
 
   setupEventListeners();
   await loadBalance();
-  await loadDepositAddress();
   await loadTransactionHistory();
   
   updateWithdrawSummary();

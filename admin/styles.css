@@ -11,6 +11,10 @@
 
 body {
   margin: 0;
+  line-height: 1.45;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
   min-height: 100vh;
   background: radial-gradient(circle at top, #1d2842, #0b0f1a 55%);
 }
@@ -153,6 +157,84 @@ tbody td {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
   gap: 0.9rem;
+}
+
+.charts-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 0.9rem;
+}
+
+.chart-card {
+  background: rgba(15, 22, 40, 0.9);
+  border: 1px solid rgba(109, 131, 179, 0.3);
+  border-radius: 12px;
+  padding: 0.8rem 0.9rem;
+}
+
+.chart-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.6rem;
+  margin-bottom: 0.55rem;
+}
+
+.chart-header h3 {
+  margin: 0;
+  font-size: 0.95rem;
+  color: #ccd6f6;
+}
+
+.chart-current {
+  font-weight: 700;
+  color: #eef2ff;
+  font-size: 0.88rem;
+}
+
+.chart-svg {
+  width: 100%;
+  height: 140px;
+  display: block;
+  border-radius: 8px;
+  background: rgba(9, 14, 27, 0.72);
+  border: 1px solid rgba(109, 131, 179, 0.2);
+}
+
+.chart-line {
+  fill: none;
+  stroke-width: 2.4;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+
+.chart-baseline {
+  fill: none;
+  stroke: rgba(109, 131, 179, 0.35);
+  stroke-width: 1;
+  stroke-dasharray: 4 3;
+}
+
+.line-cpu {
+  stroke: #6bb7ff;
+}
+
+.line-ram {
+  stroke: #52d48c;
+}
+
+.line-disk {
+  stroke: #f6c36f;
+}
+
+.line-rss {
+  stroke: #b48dff;
+}
+
+.chart-meta {
+  margin-top: 0.45rem;
+  font-size: 0.78rem;
+  color: #a8b3d9;
 }
 
 .stat-card {

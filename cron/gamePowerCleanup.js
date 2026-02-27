@@ -29,6 +29,49 @@ function startGamePowerCleanup({ run }, options = {}) {
         details: { deletedRows: executionResult.deletedRows }
       })
     });
+
+    await runCronAction({
+      action: "cleanup_youtube_powers_older_24h",
+      logStart: false,
+      prepare: async () => ({
+        now: Date.now(),
+        cutoff24h: Date.now() - 24 * 60 * 60 * 1000,
+        hasRunFn: typeof run === "function"
+      }),
+      validate: async ({ hasRunFn }) => {
+        if (!hasRunFn) {
+          return { ok: false, reason: "missing_run_function" };
+        }
+        return { ok: true };
+      },
+      sanitize: async ({ now, cutoff24h }) => ({
+        now: Number(now),
+        cutoff24h: Number(cutoff24h)
+      }),
+      execute: async ({ now, cutoff24h }) => {
+        const expiredResult = await run(
+          "DELETE FROM youtube_watch_user_powers WHERE expires_at <= ?",
+          [now]
+        );
+
+        const olderThan24hResult = await run(
+          "DELETE FROM youtube_watch_user_powers WHERE claimed_at <= ?",
+          [cutoff24h]
+        );
+
+        return {
+          deletedExpiredRows: Number(expiredResult?.changes || 0),
+          deletedOlderThan24hRows: Number(olderThan24hResult?.changes || 0)
+        };
+      },
+      confirm: async ({ executionResult }) => ({
+        ok: true,
+        details: {
+          deletedExpiredRows: executionResult.deletedExpiredRows,
+          deletedOlderThan24hRows: executionResult.deletedOlderThan24hRows
+        }
+      })
+    });
   };
 
   // If a cron expression is provided, use it

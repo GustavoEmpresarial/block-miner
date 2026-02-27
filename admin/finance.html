@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>BlockMiner | Admin Finance</title>
+    <link rel="stylesheet" href="/admin/styles.css" />
+  </head>
+  <body>
+    <main class="admin-app">
+      <header class="admin-header">
+        <div>
+          <h1>Finance Admin</h1>
+          <p>Overview and recent financial activity.</p>
+        </div>
+        <div style="display:flex;gap:.6rem;align-items:center;">
+          <span id="status" class="status"></span>
+          <a class="btn" href="/admin/">Back</a>
+          <button class="btn" id="refreshBtn" type="button">Refresh</button>
+        </div>
+      </header>
+
+      <section class="card">
+        <div class="form-grid" style="grid-template-columns: 1.2fr .9fr .9fr .9fr .9fr auto; margin-bottom: .8rem;">
+          <label>
+            Search (email/username/user id)
+            <input id="searchInput" type="text" placeholder="search" />
+          </label>
+          <label>
+            Type
+            <select id="typeInput"><option value="">All</option><option value="deposit">deposit</option><option value="withdrawal">withdrawal</option></select>
+          </label>
+          <label>
+            Status
+            <select id="statusInput"><option value="">All</option><option value="pending">pending</option><option value="approved">approved</option><option value="completed">completed</option><option value="failed">failed</option></select>
+          </label>
+          <label>
+            From
+            <input id="fromInput" type="date" />
+          </label>
+          <label>
+            To
+            <input id="toInput" type="date" />
+          </label>
+          <button class="btn" id="applyBtn" type="button">Apply</button>
+        </div>
+        <div id="overviewGrid" class="stats-grid"></div>
+      </section>
+
+      <section class="card">
+        <div class="table-header"><h2>Recent transactions</h2></div>
+        <div class="table-wrapper">
+          <table class="table-compact">
+            <thead><tr><th>ID</th><th>User</th><th>Type</th><th>Amount</th><th>Status</th><th>Tx</th><th>When</th></tr></thead>
+            <tbody id="txTable"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="card">
+        <div class="table-header"><h2>Recent payouts</h2></div>
+        <div class="table-wrapper">
+          <table class="table-compact">
+            <thead><tr><th>ID</th><th>User</th><th>Amount POL</th><th>Source</th><th>Tx</th><th>When</th></tr></thead>
+            <tbody id="payoutTable"></tbody>
+          </table>
+        </div>
+        <div style="display:flex;justify-content:flex-end;gap:.6rem;margin-top:.8rem;">
+          <button class="btn small" id="prevBtn" type="button">Prev</button>
+          <span id="pageInfo" class="status"></span>
+          <button class="btn small" id="nextBtn" type="button">Next</button>
+        </div>
+      </section>
+    </main>
+    <script src="/admin/finance.js"></script>
+  </body>
+</html>

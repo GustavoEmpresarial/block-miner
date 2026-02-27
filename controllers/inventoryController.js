@@ -4,6 +4,7 @@ const minersModel = require("../models/minersModel");
 const { getOrCreateMinerProfile } = require("../models/minerProfileModel");
 const { getSlotSizeForMiner } = require("../utils/minerUtils");
 const { run } = require("../models/db");
+const DEFAULT_MINER_IMAGE_URL = "/assets/machines/reward1.png";
 
 function normalizeMinerIdentifier(value) {
   return String(value || "")
@@ -88,7 +89,7 @@ function createInventoryController({ io, syncUserBaseHashRate }) {
               miner_id: matchedMiner.id,
               miner_name: desiredName,
               slot_size: desiredSlotSize,
-              image_url: matchedMiner.image_url || `/assets/machines/${matchedMiner.id}.png`
+              image_url: matchedMiner.image_url || DEFAULT_MINER_IMAGE_URL
             };
           }
 

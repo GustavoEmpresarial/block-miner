@@ -80,13 +80,17 @@ async function loadNetworkStats() {
     }
 
     const networkHashEl = document.getElementById("statNetworkHash");
+    const miningRoomHashEl = document.getElementById("statMiningRoomHash");
     const gameHashEl = document.getElementById("statGameHash");
+    const youtubeHashEl = document.getElementById("statYoutubeHash");
     const usersEl = document.getElementById("statUsers");
     const paidEl = document.getElementById("statPaid");
     const daysEl = document.getElementById("statDays");
 
     if (networkHashEl) networkHashEl.textContent = formatHashrate(payload.networkHashRate);
+    if (miningRoomHashEl) miningRoomHashEl.textContent = formatHashrate(payload.miningRoomHashRate);
     if (gameHashEl) gameHashEl.textContent = formatHashrate(payload.activeGameHashRate);
+    if (youtubeHashEl) youtubeHashEl.textContent = formatHashrate(payload.activeYoutubeHashRate);
     if (usersEl) usersEl.textContent = Number(payload.registeredUsers || 0).toLocaleString("en-US");
     if (paidEl) paidEl.textContent = `${Number(payload.totalPaid || 0).toLocaleString("en-US")} POL`;
     if (daysEl) daysEl.textContent = Number(payload.daysOnline || 0).toLocaleString("en-US");
@@ -137,8 +141,12 @@ async function loadPowerRanking() {
             <span class="value">${formatHashrate(entry.baseHashRate)}</span>
           </div>
           <div class="reward-row">
-            <span class="label">Active Games (24h / 7d):</span>
+            <span class="label">Mini Games:</span>
             <span class="value">${formatHashrate(entry.gameHashRate)}</span>
+          </div>
+          <div class="reward-row">
+            <span class="label">YouTube Boost:</span>
+            <span class="value">${formatHashrate(entry.youtubeHashRate)}</span>
           </div>
         </div>
       </div>

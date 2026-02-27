@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>BlockMiner | Admin Backups</title>
+    <link rel="stylesheet" href="/admin/styles.css" />
+  </head>
+  <body>
+    <main class="admin-app">
+      <header class="admin-header">
+        <div>
+          <h1>Backups & Export</h1>
+          <p>Export database and manage backup files.</p>
+        </div>
+        <div style="display:flex;gap:.6rem;align-items:center;">
+          <span id="status" class="status"></span>
+          <a class="btn" href="/admin/">Back</a>
+          <button class="btn" id="exportBtn" type="button">Export DB</button>
+          <button class="btn" id="refreshBtn" type="button">Refresh</button>
+        </div>
+      </header>
+
+      <section class="card">
+        <div class="form-grid" style="grid-template-columns: 1.2fr 1fr 1fr auto; margin-bottom:.8rem;">
+          <label>
+            Search file
+            <input id="searchInput" type="text" placeholder="nome do arquivo" />
+          </label>
+          <label>
+            From date
+            <input id="fromInput" type="date" />
+          </label>
+          <label>
+            To date
+            <input id="toInput" type="date" />
+          </label>
+          <button class="btn" id="applyBtn" type="button">Apply</button>
+        </div>
+        <div class="table-header"><h2>Backup files</h2></div>
+        <div class="table-wrapper">
+          <table class="table-compact">
+            <thead><tr><th>Name</th><th>Size</th><th>Modified</th><th>Action</th></tr></thead>
+            <tbody id="backupsTable"></tbody>
+          </table>
+        </div>
+        <div style="display:flex;justify-content:flex-end;gap:.6rem;margin-top:.8rem;">
+          <button class="btn small" id="prevBtn" type="button">Prev</button>
+          <span id="pageInfo" class="status"></span>
+          <button class="btn small" id="nextBtn" type="button">Next</button>
+        </div>
+      </section>
+    </main>
+    <script src="/admin/backups.js"></script>
+  </body>
+</html>

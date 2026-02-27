@@ -27,6 +27,8 @@ function startMiningLoop({ engine, io, persistMinerProfile, buildPublicState }, 
       action: "mining_tick",
       logStart: false,
       logSuccess: false,
+      skippedLogLevel: "debug",
+      validateFailureLogLevel: "debug",
       validate: async () => {
         if (!engine || typeof engine.tick !== "function") {
           return { ok: false, reason: "invalid_engine" };
@@ -77,6 +79,9 @@ function startMiningLoop({ engine, io, persistMinerProfile, buildPublicState }, 
     const result = await runCronAction({
       action: "persist_miners",
       logStart: false,
+      logSuccess: false,
+      skippedLogLevel: "debug",
+      validateFailureLogLevel: "debug",
       validate: async () => {
         if (!engine || !engine.miners || typeof engine.miners.values !== "function") {
           return { ok: false, reason: "invalid_engine_miners" };

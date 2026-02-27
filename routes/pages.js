@@ -13,8 +13,13 @@ const pageMap = {
   "/games": "games.html",
   "/games/memory": "memory-game.html",
   "/games/memory/claim": "memory-claim.html",
+  "/games/youtube": "youtube-watch.html",
   "/ranking": "ranking.html",
   "/mining-stats": "mining-stats.html",
+  "/events": "events.html",
+  "/marketplace": "marketplace.html",
+  "/staking": "staking.html",
+  "/chat": "chat.html",
   "/shop": "shop.html",
   "/earnings/faucet": "earnings-faucet.html",
   "/earnings/ptc": "earnings-ptc.html",
@@ -31,6 +36,7 @@ const pageMap = {
   "/referral": "referral.html",
   "/blog": "blog.html",
   "/roadmap": "roadmap.html",
+  "/tutorial": "tutorial.html",
   "/settings": "settings.html",
   "/season-pass-coming-soon": "season-pass-coming-soon.html"
 };
@@ -40,8 +46,13 @@ const protectedRoutes = new Set([
   "/games",
   "/games/memory",
   "/games/memory/claim",
+  "/games/youtube",
   "/ranking",
   "/mining-stats",
+  "/events",
+  "/marketplace",
+  "/staking",
+  "/chat",
   "/shop",
   "/earnings/faucet",
   "/earnings/ptc",
@@ -58,6 +69,7 @@ const protectedRoutes = new Set([
   "/referral",
   "/blog",
   "/roadmap",
+  "/tutorial",
   "/settings"
 ]);
 

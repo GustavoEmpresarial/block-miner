@@ -13,8 +13,22 @@
           <h1>Miner Admin</h1>
           <p>Create, edit, and manage miners.</p>
         </div>
-        <button class="btn" id="refreshButton" type="button">Refresh</button>
+        <div style="display: flex; align-items: center; gap: 0.6rem;">
+          <span id="exportStatus" class="status"></span>
+          <button class="btn" id="exportDbButton" type="button">Export DB</button>
+          <button class="btn" id="refreshButton" type="button">Refresh</button>
+        </div>
       </header>
+
+      <section class="card">
+        <div style="display: flex; gap: 0.7rem; flex-wrap: wrap;">
+          <a class="btn" href="/admin/users.html">Users Detailed</a>
+          <a class="btn" href="/admin/backups.html">Backups & Exports</a>
+          <a class="btn" href="/admin/miners-advanced.html">Miners Advanced</a>
+          <a class="btn" href="/admin/server-metrics.html">Server Monitor</a>
+          <a class="btn" href="/admin/finance.html">Finance Admin</a>
+        </div>
+      </section>
 
       <section class="card">
         <div class="table-header">
@@ -36,6 +50,14 @@
                 <th>ID</th>
                 <th>Email</th>
                 <th>Username</th>
+                <th>IP</th>
+                <th>Pool</th>
+                <th>Base GHS</th>
+                <th>Faucet</th>
+                <th>Shortlink</th>
+                <th>Auto GPU</th>
+                <th>YT Claims</th>
+                <th>YT Active GH</th>
                 <th>Created</th>
                 <th>Last login</th>
                 <th>Banned</th>
@@ -118,11 +140,19 @@
           </label>
           <label>
             Image URL
-            <input name="imageUrl" type="text" placeholder="/assets/machines/123.png" />
+            <input name="imageUrl" type="text" placeholder="/assets/machines/uploaded/minha-imagem.png" />
+          </label>
+          <label>
+            Upload Image
+            <input name="imageFile" type="file" accept="image/png,image/jpeg,image/webp,image/gif" />
           </label>
           <label class="checkbox">
             <input name="isActive" type="checkbox" checked />
             Active
+          </label>
+          <label class="checkbox">
+            <input name="showInShop" type="checkbox" checked />
+            Show in shop
           </label>
           <button class="btn primary" type="submit">Create Miner</button>
         </form>
@@ -145,6 +175,7 @@
                 <th>Slot</th>
                 <th>Image URL</th>
                 <th>Active</th>
+                <th>Shop</th>
                 <th>Save</th>
               </tr>
             </thead>

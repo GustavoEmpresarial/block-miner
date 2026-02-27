@@ -1,5 +1,150 @@
 const minersModel = require("../models/minersModel");
 const { get, all, run } = require("../models/db");
+const os = require("os");
+const path = require("path");
+const fs = require("fs/promises");
+const { execFile } = require("child_process");
+const { promisify } = require("util");
+
+const execFileAsync = promisify(execFile);
+
+function captureCpuSnapshot() {
+  const cpus = os.cpus() || [];
+  let idle = 0;
+  let total = 0;
+
+  for (const cpu of cpus) {
+    const times = cpu?.times || {};
+    const cpuIdle = Number(times.idle || 0);
+    const cpuTotal = Number(times.user || 0) + Number(times.nice || 0) + Number(times.sys || 0) + Number(times.irq || 0) + cpuIdle;
+    idle += cpuIdle;
+    total += cpuTotal;
+  }
+
+  return { idle, total, at: Date.now(), cores: cpus.length };
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function measureCpuUsagePercent(sampleMs = 300) {
+  const before = captureCpuSnapshot();
+  await sleep(sampleMs);
+  const after = captureCpuSnapshot();
+
+  const idleDelta = after.idle - before.idle;
+  const totalDelta = after.total - before.total;
+  const envCores = Number(process.env.NUMBER_OF_PROCESSORS || 0);
+  const cores = Number.isFinite(after.cores) && after.cores > 0 ? after.cores : envCores;
+
+  if (totalDelta <= 0) {
+    return { usagePercent: 0, cores };
+  }
+
+  const usagePercent = Math.max(0, Math.min(100, (1 - idleDelta / totalDelta) * 100));
+  return { usagePercent, cores };
+}
+
+async function getDiskUsageFromPowerShell(targetPath) {
+  const escapedPath = String(targetPath || "").replace(/'/g, "''");
+  const command = `$item = Get-Item -LiteralPath '${escapedPath}' -ErrorAction Stop; $drive = $item.PSDrive; if ($drive) { [pscustomobject]@{ total = [double]($drive.Used + $drive.Free); used = [double]$drive.Used; free = [double]$drive.Free } | ConvertTo-Json -Compress }`;
+  const { stdout } = await execFileAsync("powershell", ["-NoProfile", "-Command", command], { timeout: 5000 });
+  const parsed = JSON.parse(String(stdout || "{}").trim() || "{}");
+  const totalBytes = Number(parsed?.total || 0);
+  const usedBytes = Number(parsed?.used || 0);
+  const freeBytes = Number(parsed?.free || 0);
+  return { totalBytes, usedBytes, freeBytes };
+}
+
+async function getDiskUsageFromDf(targetPath) {
+  const { stdout } = await execFileAsync("df", ["-k", targetPath], { timeout: 5000 });
+  const lines = String(stdout || "").trim().split(/\r?\n/).filter(Boolean);
+  if (lines.length < 2) {
+    return { totalBytes: 0, freeBytes: 0, usedBytes: 0 };
+  }
+
+  const columns = lines[lines.length - 1].trim().split(/\s+/);
+  const totalKb = Number(columns[1] || 0);
+  const usedKb = Number(columns[2] || 0);
+  const freeKb = Number(columns[3] || 0);
+
+  return {
+    totalBytes: totalKb * 1024,
+    usedBytes: usedKb * 1024,
+    freeBytes: freeKb * 1024
+  };
+}
+
+async function getDiskUsageBytes(targetPath) {
+  if (typeof fs.statfs === "function") {
+    try {
+      const stats = await fs.statfs(targetPath);
+      const blockSize = Number(stats?.bsize || stats?.frsize || 0);
+      const totalBlocks = Number(stats?.blocks || 0);
+      const freeBlocks = Number(stats?.bavail || stats?.bfree || 0);
+
+      const totalBytes = blockSize * totalBlocks;
+      const freeBytes = blockSize * freeBlocks;
+      const usedBytes = Math.max(0, totalBytes - freeBytes);
+
+      if (totalBytes > 0) {
+        return { totalBytes, freeBytes, usedBytes };
+      }
+    } catch {
+      // fallback below
+    }
+  }
+
+  try {
+    if (process.platform === "win32") {
+      return await getDiskUsageFromPowerShell(targetPath);
+    }
+    return await getDiskUsageFromDf(targetPath);
+  } catch {
+    return { totalBytes: 0, freeBytes: 0, usedBytes: 0 };
+  }
+}
+
+async function collectServerMetrics() {
+  const [diskUsage, cpu] = await Promise.all([
+    getDiskUsageBytes(path.resolve(process.cwd())),
+    measureCpuUsagePercent(300)
+  ]);
+
+  const totalMem = Number(os.totalmem() || 0);
+  const freeMem = Number(os.freemem() || 0);
+  const usedMem = Math.max(0, totalMem - freeMem);
+  const processMemory = process.memoryUsage();
+  const loadAverageRaw = os.loadavg ? os.loadavg() : [0, 0, 0];
+  const loadAvgSupported = process.platform !== "win32";
+
+  return {
+    serverCpuUsagePercent: Number(cpu.usagePercent || 0),
+    serverCpuCores: Number(cpu.cores || 0),
+    serverLoadAvg1m: loadAvgSupported ? Number(loadAverageRaw?.[0] || 0) : null,
+    serverLoadAvg5m: loadAvgSupported ? Number(loadAverageRaw?.[1] || 0) : null,
+    serverLoadAvg15m: loadAvgSupported ? Number(loadAverageRaw?.[2] || 0) : null,
+    serverLoadAvgSupported: loadAvgSupported,
+    serverMemoryTotalBytes: totalMem,
+    serverMemoryUsedBytes: usedMem,
+    serverMemoryFreeBytes: freeMem,
+    serverMemoryUsagePercent: totalMem > 0 ? (usedMem / totalMem) * 100 : 0,
+    serverDiskTotalBytes: Number(diskUsage.totalBytes || 0),
+    serverDiskUsedBytes: Number(diskUsage.usedBytes || 0),
+    serverDiskFreeBytes: Number(diskUsage.freeBytes || 0),
+    serverDiskUsagePercent: Number(diskUsage.totalBytes || 0) > 0
+      ? (Number(diskUsage.usedBytes || 0) / Number(diskUsage.totalBytes || 1)) * 100
+      : 0,
+    processRssBytes: Number(processMemory?.rss || 0),
+    processHeapUsedBytes: Number(processMemory?.heapUsed || 0),
+    processHeapTotalBytes: Number(processMemory?.heapTotal || 0),
+    processExternalBytes: Number(processMemory?.external || 0),
+    processUptimeSeconds: Number(process.uptime?.() || 0),
+    sampledAt: Date.now(),
+    platform: process.platform
+  };
+}
 
 function toTrimmedString(value) {
   if (typeof value !== "string") return "";
@@ -25,6 +170,16 @@ function parseIsActive(value) {
   return Boolean(value);
 }
 
+function parseOptionalBoolean(value) {
+  if (value === undefined || value === null || value === "") {
+    return null;
+  }
+  if (typeof value === "boolean") return value;
+  if (value === 1 || value === "1") return true;
+  if (value === 0 || value === "0") return false;
+  return Boolean(value);
+}
+
 function normalizeImageUrl(value) {
   const text = toTrimmedString(value);
   return text.length > 0 ? text : null;
@@ -38,6 +193,7 @@ function validateMinerPayload(body) {
   const slotSize = parseSlotSize(body?.slotSize);
   const imageUrl = normalizeImageUrl(body?.imageUrl);
   const isActive = parseIsActive(body?.isActive);
+  const showInShop = parseOptionalBoolean(body?.showInShop);
 
   if (!name || !slug) {
     return { ok: false, message: "Name and slug are required." };
@@ -68,7 +224,8 @@ function validateMinerPayload(body) {
       price,
       slotSize,
       imageUrl,
-      isActive
+      isActive,
+      ...(showInShop === null ? {} : { showInShop })
     }
   };
 }
@@ -90,7 +247,10 @@ function createAdminController() {
         balances,
         tx24h,
         referralsTotal,
-        audit24h
+        audit24h,
+        youtubeActiveHash,
+        youtubeClaims24h,
+        youtubeUsers24h
       ] = await Promise.all([
         get("SELECT COUNT(*) AS count FROM users"),
         get("SELECT COUNT(*) AS count FROM users WHERE is_banned = 1"),
@@ -106,8 +266,13 @@ function createAdminController() {
           [dayAgo]
         ),
         get("SELECT COUNT(*) AS count FROM referrals"),
-        get("SELECT COUNT(*) AS count FROM audit_logs WHERE created_at >= ?", [dayAgo])
+        get("SELECT COUNT(*) AS count FROM audit_logs WHERE created_at >= ?", [dayAgo]),
+        get("SELECT COALESCE(SUM(hash_rate), 0) AS total FROM youtube_watch_user_powers WHERE expires_at > ?", [now]),
+        get("SELECT COUNT(*) AS count FROM youtube_watch_power_history WHERE claimed_at >= ?", [dayAgo]),
+        get("SELECT COUNT(DISTINCT user_id) AS count FROM youtube_watch_power_history WHERE claimed_at >= ?", [dayAgo])
       ]);
+
+      const serverMetrics = await collectServerMetrics();
 
       const lockoutsWeek = await get(
         "SELECT COUNT(*) AS count FROM auth_lockouts WHERE last_at >= ?",
@@ -129,7 +294,11 @@ function createAdminController() {
           transactions24h: Number(tx24h?.count || 0),
           referralsTotal: Number(referralsTotal?.count || 0),
           auditEvents24h: Number(audit24h?.count || 0),
-          lockouts7d: Number(lockoutsWeek?.count || 0)
+          lockouts7d: Number(lockoutsWeek?.count || 0),
+          youtubeActiveHash: Number(youtubeActiveHash?.total || 0),
+          youtubeClaims24h: Number(youtubeClaims24h?.count || 0),
+          youtubeUsers24h: Number(youtubeUsers24h?.count || 0),
+          ...serverMetrics
         }
       });
     } catch (error) {
@@ -138,20 +307,118 @@ function createAdminController() {
     }
   }
 
+  async function getServerMetrics(_req, res) {
+    try {
+      const metrics = await collectServerMetrics();
+      res.json({ ok: true, metrics });
+    } catch (error) {
+      console.error("Admin server metrics error:", error);
+      res.status(500).json({ ok: false, message: "Unable to load server metrics." });
+    }
+  }
+
   async function listRecentUsers(req, res) {
     try {
-      const limit = Math.max(1, Math.min(200, Number(req.query?.limit || 25)));
-      const users = await all(
+      const page = Math.max(1, Number(req.query?.page || 1));
+      const pageSize = Math.max(1, Math.min(200, Number(req.query?.pageSize || req.query?.limit || 25)));
+      const offset = (page - 1) * pageSize;
+      const queryText = toTrimmedString(req.query?.q).toLowerCase();
+      const fromDate = toTrimmedString(req.query?.from);
+      const toDate = toTrimmedString(req.query?.to);
+
+      const whereParts = [];
+      const whereParams = [];
+
+      if (queryText) {
+        whereParts.push("(LOWER(COALESCE(u.email, '')) LIKE ? OR LOWER(COALESCE(u.username, '')) LIKE ? OR LOWER(COALESCE(u.name, '')) LIKE ?)");
+        const likeQuery = `%${queryText}%`;
+        whereParams.push(likeQuery, likeQuery, likeQuery);
+      }
+
+      if (fromDate) {
+        const fromMs = Date.parse(`${fromDate}T00:00:00Z`);
+        if (Number.isFinite(fromMs)) {
+          whereParts.push("u.created_at >= ?");
+          whereParams.push(fromMs);
+        }
+      }
+
+      if (toDate) {
+        const toMs = Date.parse(`${toDate}T23:59:59.999Z`);
+        if (Number.isFinite(toMs)) {
+          whereParts.push("u.created_at <= ?");
+          whereParams.push(toMs);
+        }
+      }
+
+      const whereSql = whereParts.length > 0 ? `WHERE ${whereParts.join(" AND ")}` : "";
+
+      const totalRow = await get(
         `
-          SELECT id, username, name, email, is_banned, created_at, last_login_at
-          FROM users
-          ORDER BY created_at DESC
-          LIMIT ?
+          SELECT COUNT(*) AS total
+          FROM users u
+          ${whereSql}
         `,
-        [limit]
+        whereParams
       );
 
-      res.json({ ok: true, users });
+      const users = await all(
+        `
+          SELECT
+            u.id,
+            u.username,
+            u.name,
+            u.email,
+            u.ip,
+            u.is_banned,
+            u.created_at,
+            u.last_login_at,
+            COALESCE(utp.wallet_address, '') AS wallet_address,
+            COALESCE(utp.rigs, 0) AS rigs,
+            COALESCE(utp.base_hash_rate, 0) AS base_hash_rate,
+            COALESCE(utp.balance, 0) AS pool_balance,
+            COALESCE(utp.lifetime_mined, 0) AS lifetime_mined,
+            COALESCE(utp.total_withdrawn, 0) AS total_withdrawn,
+            COALESCE(fc.total_claims, 0) AS faucet_claims,
+            COALESCE(sc.daily_runs, 0) AS shortlink_daily_runs,
+            COALESCE(amg.total_claimed_ever, 0) AS auto_gpu_claims,
+            COALESCE(yth.total_claimed_ever, 0) AS youtube_claims,
+            COALESCE(ytp.active_hash, 0) AS youtube_active_hash
+          FROM users u
+          LEFT JOIN users_temp_power utp ON utp.user_id = u.id
+          LEFT JOIN faucet_claims fc ON fc.user_id = u.id
+          LEFT JOIN shortlink_completions sc ON sc.user_id = u.id
+          LEFT JOIN (
+            SELECT user_id, COUNT(*) AS total_claimed_ever
+            FROM auto_mining_gpu_logs
+            WHERE action = 'claim'
+            GROUP BY user_id
+          ) amg ON amg.user_id = u.id
+          LEFT JOIN (
+            SELECT user_id, COUNT(*) AS total_claimed_ever
+            FROM youtube_watch_power_history
+            GROUP BY user_id
+          ) yth ON yth.user_id = u.id
+          LEFT JOIN (
+            SELECT user_id, COALESCE(SUM(hash_rate), 0) AS active_hash
+            FROM youtube_watch_user_powers
+            WHERE expires_at > ?
+            GROUP BY user_id
+          ) ytp ON ytp.user_id = u.id
+          ${whereSql}
+          ORDER BY u.created_at DESC
+          LIMIT ? OFFSET ?
+        `,
+        [Date.now(), ...whereParams, pageSize, offset]
+      );
+
+      res.json({
+        ok: true,
+        users,
+        page,
+        pageSize,
+        total: Number(totalRow?.total || 0)
+      });
     } catch (error) {
       console.error("Admin list users error:", error);
       res.status(500).json({ ok: false, message: "Unable to load users." });
@@ -404,6 +671,7 @@ function createAdminController() {
 
   return {
     getStats,
+    getServerMetrics,
     listRecentUsers,
     listAuditLogs,
     setUserBan,

@@ -1,5 +1,6 @@
 const { ethers } = require("ethers");
 const walletModel = require("../models/walletModel");
+const { all } = require("../src/db/sqlite");
 const logger = require("../utils/logger").child("DepositsCron");
 const { createCronActionRunner } = require("./cronActionRunner");
 const cron = require('node-cron');
@@ -19,6 +20,48 @@ const DEFAULT_RPC_URLS = [
 ];
 const RPC_URLS = Array.from(new Set([POLYGON_RPC_URL, ...DEFAULT_RPC_URLS]));
 const CHECKIN_RECEIVER = process.env.CHECKIN_RECEIVER || "0x95EA8E99063A3EF1B95302aA1C5bE199653EEb13";
+const WITHDRAWAL_PRIVATE_KEY = process.env.WITHDRAWAL_PRIVATE_KEY;
+const WITHDRAWAL_MNEMONIC = process.env.WITHDRAWAL_MNEMONIC;
+
+// Function to get hot wallet address for deposit compatibility
+function getHotWalletAddress() {
+  try {
+    const mnemonic = String(WITHDRAWAL_MNEMONIC || "").trim();
+    if (mnemonic) {
+      return ethers.Wallet.fromPhrase(mnemonic).address;
+    }
+
+    const rawPrivateKey = String(WITHDRAWAL_PRIVATE_KEY || "").trim();
+    if (rawPrivateKey) {
+      const compact = rawPrivateKey.replace(/\s+/g, "");
+      const isHexPrivateKey = /^0x?[0-9a-fA-F]{64}$/.test(compact);
+      if (isHexPrivateKey) {
+        const normalized = compact.startsWith("0x") ? compact : `0x${compact}`;
+        return new ethers.Wallet(normalized).address;
+      }
+      return ethers.Wallet.fromPhrase(rawPrivateKey).address;
+    }
+  } catch (error) {
+    logger.warn("Failed to get hot wallet address", { error: error.message });
+  }
+  return null;
+}
+
+// Get allowed deposit addresses
+function getAllowedDepositAddresses() {
+  const addresses = [CHECKIN_RECEIVER];
+  const hotWalletAddress = getHotWalletAddress();
+  if (hotWalletAddress && !isSameAddress(hotWalletAddress, CHECKIN_RECEIVER)) {
+    addresses.push(hotWalletAddress);
+  }
+  return addresses;
+}
+
+// Check if address is valid for deposits
+function isValidDepositAddress(address) {
+  const allowedAddresses = getAllowedDepositAddresses();
+  return allowedAddresses.some(allowed => isSameAddress(address, allowed));
+}
 
 let currentProviderIndex = 0;
 const runCronAction = createCronActionRunner({ logger, cronName: "DepositsCron" });
@@ -58,6 +101,108 @@ async function getConfirmations(provider, receipt) {
 
   const latestBlock = await provider.getBlockNumber();
   return Math.max(0, latestBlock - receipt.blockNumber + 1);
+}
+
+async function scanForNewDeposits() {
+  await runCronAction({
+    action: "scan_blockchain_deposits",
+    meta: { trigger: "scheduler" },
+    prepare: async () => {
+      const provider = await getProvider();
+      const currentBlock = await provider.getBlockNumber();
+      
+      // Verificar últimos 1000 blocos para novos depósitos (aproximadamente 33 minutos)
+      const fromBlock = Math.max(currentBlock - 1000, 0);
+      
+      return { provider, currentBlock, fromBlock };
+    },
+    validate: async ({ provider, currentBlock, fromBlock }) => {
+      if (!provider || !currentBlock || fromBlock < 0) {
+        return { ok: false, reason: "invalid_blockchain_data" };
+      }
+      return { ok: true, details: { currentBlock, fromBlock, blocksToScan: currentBlock - fromBlock } };
+    },
+    sanitize: async ({ provider, currentBlock, fromBlock }) => {
+      return { provider, currentBlock, fromBlock };
+    },
+    execute: async ({ provider, currentBlock, fromBlock }) => {
+      logger.info("Scanning blockchain for new deposits", { fromBlock, toBlock: currentBlock });
+      
+      let newDepositsFound = 0;
+      let totalTransactionsScanned = 0;
+      const allowedAddresses = getAllowedDepositAddresses();
+      
+      // Escanear blocos recentes procurando por transações para nossos endereços
+      for (let blockNum = fromBlock; blockNum <= currentBlock; blockNum++) {
+        try {
+          const block = await provider.getBlock(blockNum, true);
+          
+          if (block && block.transactions) {
+            for (const tx of block.transactions) {
+              totalTransactionsScanned++;
+              
+              // Verificar se é uma transação para um dos nossos endereços de depósito
+              if (tx.to && allowedAddresses.some(addr => isSameAddress(tx.to, addr))) {
+                // Verificar se já temos esse depósito registrado
+                const existingDeposit = await walletModel.getTransactionByHash(tx.hash);
+                
+                if (!existingDeposit) {
+                  logger.info("New deposit found on blockchain", {
+                    txHash: tx.hash,
+                    value: ethers.formatEther(tx.value || 0),
+                    from: tx.from,
+                    to: tx.to,
+                    blockNumber: blockNum
+                  });
+                  
+                  // Determinar o usuário baseado no endereço de destino ou outros critérios
+                  // Por enquanto, vamos assumir que é o primeiro usuário (isso pode ser melhorado)
+                  const users = await all("SELECT id FROM users LIMIT 1");
+                  
+                  if (users.length > 0) {
+                    const userId = users[0].id;
+                    const amount = Number(ethers.formatEther(tx.value || 0));
+                    
+                    // Criar depósito pendente que será processado pelo cron principal
+                    await walletModel.createDeposit(userId, amount, tx.hash, tx.from, tx.to);
+                    newDepositsFound++;
+                    
+                    logger.info("Created pending deposit record", {
+                      userId,
+                      amount,
+                      txHash: tx.hash
+                    });
+                  }
+                }
+              }
+            }
+          }
+        } catch (error) {
+          logger.warn("Error scanning block for deposits", { blockNum, error: error.message });
+        }
+      }
+      
+      return {
+        newDepositsFound,
+        totalTransactionsScanned,
+        blocksScanned: currentBlock - fromBlock + 1
+      };
+    },
+    confirm: async ({ executionResult }) => {
+      const { newDepositsFound, totalTransactionsScanned, blocksScanned } = executionResult;
+      
+      logger.info("Blockchain scan completed", {
+        newDepositsFound,
+        totalTransactionsScanned,
+        blocksScanned
+      });
+      
+      return {
+        ok: true,
+        details: executionResult
+      };
+    }
+  });
 }
 
 async function checkPendingDeposits() {
@@ -132,7 +277,7 @@ async function checkPendingDeposits() {
             };
           },
           execute: async ({ deposit: safeDeposit, toAddress, actualAmount }) => {
-            if (!isSameAddress(toAddress, CHECKIN_RECEIVER)) {
+            if (!isValidDepositAddress(toAddress)) {
               await walletModel.updateDepositStatus(safeDeposit.id, "invalid");
               return { status: "invalid", reason: "destination_mismatch" };
             }
@@ -203,28 +348,44 @@ function startDepositMonitoring() {
   const cronExpr = config?.schedules?.depositsCron;
   if (cronExpr) {
     try {
-      const task = cron.schedule(cronExpr, () => {
+      const scanTask = cron.schedule(cronExpr, () => {
+        scanForNewDeposits().catch(err => logger.error('Blockchain scan failed', { error: err.message }));
+      }, { scheduled: true });
+      
+      const processTask = cron.schedule(cronExpr, () => {
         checkPendingDeposits().catch(err => logger.error('Deposit check failed', { error: err.message }));
       }, { scheduled: true });
 
-      // Run once on startup
-      checkPendingDeposits();
+      // Run both once on startup
+      scanForNewDeposits().catch(err => logger.error('Initial blockchain scan failed', { error: err.message }));
+      checkPendingDeposits().catch(err => logger.error('Initial deposit check failed', { error: err.message }));
 
       logger.info('Deposit monitoring started (cron)', { cron: cronExpr });
-      return { depositCronTask: task };
+      return { depositScanTask: scanTask, depositProcessTask: processTask };
     } catch (error) {
       logger.error('Invalid deposit cron expression, falling back to interval', { cronExpr, error: error.message });
     }
   }
 
-  // Fallback: Check pending deposits every 30 seconds
-  const interval = setInterval(checkPendingDeposits, 30000);
-  checkPendingDeposits();
-  logger.info('Deposit monitoring started', { intervalMs: 30000 });
-  return { depositMonitoringInterval: interval };
+  // Fallback: Scan blockchain every 60 seconds, process deposits every 30 seconds
+  const scanInterval = setInterval(() => {
+    scanForNewDeposits().catch(err => logger.error('Blockchain scan failed', { error: err.message }));
+  }, 60000);
+  
+  const processInterval = setInterval(() => {
+    checkPendingDeposits().catch(err => logger.error('Deposit check failed', { error: err.message }));
+  }, 30000);
+  
+  // Run both once on startup
+  scanForNewDeposits().catch(err => logger.error('Initial blockchain scan failed', { error: err.message }));
+  checkPendingDeposits().catch(err => logger.error('Initial deposit check failed', { error: err.message }));
+  
+  logger.info('Deposit monitoring started', { scanIntervalMs: 60000, processIntervalMs: 30000 });
+  return { depositScanInterval: scanInterval, depositProcessInterval: processInterval };
 }
 
 module.exports = {
   startDepositMonitoring,
+  scanForNewDeposits,
   checkPendingDeposits
 };

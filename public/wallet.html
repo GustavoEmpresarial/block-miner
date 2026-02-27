@@ -45,10 +45,10 @@
       </div>
     </section>
 
-    <!-- Connect Wallet Card (for deposits only) -->
+    <!-- Connect Wallet Card (for withdrawals only) -->
     <section class="card wallet-connection-card">
-      <h2>🔗 Deposit Wallet Connection</h2>
-      <p>Connect your MetaMask, TrustWallet or other Web3 wallet to receive deposits and earn rewards.</p>
+      <h2>🔗 Withdrawal Wallet Connection</h2>
+      <p>Connect your MetaMask, TrustWallet or other Web3 wallet to process withdrawals and manage your funds.</p>
       
       <div id="walletNotConnected" class="wallet-status">
         <div class="status-indicator disconnected">
@@ -81,57 +81,29 @@
     <!-- Deposit Section -->
     <section class="card deposit-card">
       <h2>💰 Deposit POL to Your Account</h2>
-      <p>Enter the amount, confirm in your wallet and the balance will be credited after confirmation.</p>
+      <p>Deposits are temporarily disabled.</p>
       
       <div class="deposit-methods">
-        <!-- Deposit via connected wallet -->
-        <div class="deposit-method" id="quickDepositSection" style="display: none;">
-          <h3>⚡ Deposit via Connected Wallet</h3>
-          <p>The site will call your wallet to sign and confirm the transaction.</p>
-          <span id="depositAddress" style="display: none;">Loading...</span>
-          
-          <form id="quickDepositForm" class="deposit-form">
-            <div class="form-group">
-              <label for="depositAmount">Amount to Deposit (POL)</label>
-              <input
-                type="text"
-                id="depositAmount"
-                class="form-control"
-                placeholder="0.000000"
-                inputmode="decimal"
-                autocomplete="off"
-                required
-              />
-              <small class="form-hint">Minimum: 0.01 POL</small>
-            </div>
-
-            <div class="deposit-summary">
-              <div class="summary-row">
-                <span class="summary-label">Amount:</span>
-                <span id="depositSummaryAmount" class="summary-value">0.000000 POL</span>
-              </div>
-              <div class="summary-row">
-                <span class="summary-label">Network Fee:</span>
-                <span id="depositSummaryFee" class="summary-value">~0.001 POL</span>
-              </div>
-              <div class="summary-row total">
-                <span class="summary-label">Total from wallet:</span>
-                <span id="depositSummaryTotal" class="summary-value">~0.001000 POL</span>
-              </div>
-            </div>
-
-            <button type="submit" id="quickDepositBtn" class="btn btn-success btn-block">
-              <i class="bi bi-arrow-up-circle"></i> Deposit
-            </button>
-          </form>
+        <div class="deposit-method" id="directDepositSection">
+          <h3>⏳ Deposits will be enabled soon</h3>
+          <p>We are preparing a safer and smoother deposit experience. Please check back soon.</p>
         </div>
       </div>
+    </section>
 
-      <!-- Pending Deposits -->
-      <div class="pending-deposits" id="pendingDepositsSection" style="display: none;">
-        <h3>⏳ Pending Deposits</h3>
-        <div id="pendingDepositsList" class="pending-list">
-          <!-- Populated by JS -->
+    <section class="card coming-soon-card">
+      <h2>✨ New Withdrawal Methods Coming Soon</h2>
+      <p class="highlight-text">Soon you will be able to withdraw using FaucetPay and CWallet.</p>
+      <div class="status-indicator disconnected">
+        <i class="bi bi-hourglass-split"></i>
+        <span>Integration in progress</span>
+      </div>
+      <div class="wallet-logos">
+        <div class="wallet-logo faucetpay">
+          <img src="/assets/logos/faucetpay.png" alt="FaucetPay logo" loading="lazy" />
+        </div>
+        <div class="wallet-logo cwallet">
+          <img src="/assets/logos/cwallet.png" alt="CWallet logo" loading="lazy" />
         </div>
       </div>
     </section>

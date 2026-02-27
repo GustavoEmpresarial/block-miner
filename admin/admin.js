@@ -1,6 +1,8 @@
 const tableBody = document.getElementById("minersTable");
 const statusMessage = document.getElementById("statusMessage");
 const refreshButton = document.getElementById("refreshButton");
+const exportDbButton = document.getElementById("exportDbButton");
+const exportStatus = document.getElementById("exportStatus");
 const createForm = document.getElementById("createForm");
 
 const dashboardStatus = document.getElementById("dashboardStatus");
@@ -14,6 +16,8 @@ const auditTable = document.getElementById("auditTable");
 
 const withdrawalsStatus = document.getElementById("withdrawalsStatus");
 const withdrawalsTable = document.getElementById("withdrawalsTable");
+const createImageUrlInput = createForm?.querySelector('[name="imageUrl"]') || null;
+const createImageFileInput = createForm?.querySelector('[name="imageFile"]') || null;
 
 function escapeHtml(value) {
   return String(value ?? "")
@@ -67,6 +71,44 @@ function formatDate(ms) {
   return date.toLocaleString();
 }
 
+function formatCompactNumber(value, digits = 2) {
+  const num = Number(value);
+  if (!Number.isFinite(num)) return "0";
+  return num.toFixed(digits);
+}
+
+function formatBytes(value) {
+  const bytes = Number(value || 0);
+  if (!Number.isFinite(bytes) || bytes <= 0) return "0 B";
+  const units = ["B", "KB", "MB", "GB", "TB"];
+  let amount = bytes;
+  let unitIndex = 0;
+  while (amount >= 1024 && unitIndex < units.length - 1) {
+    amount /= 1024;
+    unitIndex += 1;
+  }
+  const digits = amount >= 100 ? 0 : amount >= 10 ? 1 : 2;
+  return `${amount.toFixed(digits)} ${units[unitIndex]}`;
+}
+
+function formatPercent(value, digits = 2) {
+  const num = Number(value);
+  if (!Number.isFinite(num)) return "0.00%";
+  return `${num.toFixed(digits)}%`;
+}
+
+function sanitizeMinerImageName(fileName) {
+  const baseName = String(fileName || "miner-image")
+    .replace(/\.[^.]+$/, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9_-]/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "")
+    .slice(0, 50) || "miner-image";
+
+  return baseName;
+}
+
 async function request(url, options = {}) {
   const method = options?.method || "GET";
   const csrf = getCookie("blockminer_csrf");
@@ -102,6 +144,116 @@ async function request(url, options = {}) {
   return data;
 }
 
+async function uploadMinerImage(file) {
+  if (!(file instanceof File) || file.size <= 0) {
+    return null;
+  }
+
+  const csrf = getCookie("blockminer_csrf");
+  const adminToken = localStorage.getItem("adminToken");
+
+  const headers = {
+    ...(csrf ? { "X-CSRF-Token": csrf } : {}),
+    ...(adminToken ? { "Authorization": `Bearer ${adminToken}` } : {}),
+    "X-File-Name": file.name
+  };
+
+  const response = await fetch("/api/admin/miners/upload-image", {
+    method: "POST",
+    headers,
+    body: file,
+    credentials: "include"
+  });
+
+  const data = await response.json().catch(() => ({}));
+
+  if (response.status === 401 || response.status === 403) {
+    localStorage.removeItem("adminToken");
+    localStorage.removeItem("adminTokenExpiry");
+    window.location.href = "/admin/login";
+    return null;
+  }
+
+  if (!response.ok) {
+    throw new Error(data?.message || "Image upload failed");
+  }
+
+  return data?.imageUrl || null;
+}
+
+async function exportDatabase() {
+  const adminToken = localStorage.getItem("adminToken");
+  const headers = {
+    ...(adminToken ? { "Authorization": `Bearer ${adminToken}` } : {})
+  };
+
+  setSmallStatus(exportStatus, "Exporting DB...", "info");
+  exportDbButton.disabled = true;
+
+  try {
+    const response = await fetch("/api/admin/export-db", {
+      method: "GET",
+      headers,
+      credentials: "include"
+    });
+
+    if (response.status === 401 || response.status === 403) {
+      localStorage.removeItem("adminToken");
+      localStorage.removeItem("adminTokenExpiry");
+      window.location.href = "/admin/login";
+      return;
+    }
+
+    if (!response.ok) {
+      const errorPayload = await response.json().catch(() => ({}));
+      throw new Error(errorPayload?.message || "Failed to export database.");
+    }
+
+    const blob = await response.blob();
+    const disposition = response.headers.get("content-disposition") || "";
+    const filenameMatch = disposition.match(/filename="?([^";]+)"?/i);
+    const filename = filenameMatch?.[1] || `blockminer-export-${Date.now()}.db`;
+
+    const downloadUrl = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = downloadUrl;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(downloadUrl);
+
+    setSmallStatus(exportStatus, "DB exported.", "success");
+  } catch (error) {
+    setSmallStatus(exportStatus, error.message || "Failed to export DB.", "error");
+  } finally {
+    exportDbButton.disabled = false;
+  }
+}
+
+createImageFileInput?.addEventListener("change", () => {
+  const file = createImageFileInput.files?.[0];
+  if (!(file instanceof File) || !createImageUrlInput) {
+    return;
+  }
+
+  const extByMime = {
+    "image/png": ".png",
+    "image/jpeg": ".jpg",
+    "image/webp": ".webp",
+    "image/gif": ".gif"
+  };
+
+  const fallbackExt = (() => {
+    const match = String(file.name || "").toLowerCase().match(/\.[a-z0-9]+$/);
+    return match ? match[0] : ".png";
+  })();
+
+  const ext = extByMime[file.type] || fallbackExt;
+  const safeName = sanitizeMinerImageName(file.name);
+  createImageUrlInput.value = `/assets/machines/uploaded/${safeName}${ext}`;
+});
+
 function renderStats(stats) {
   if (!statsGrid) return;
   statsGrid.innerHTML = "";
@@ -118,7 +270,22 @@ function renderStats(stats) {
     ["Transactions (24h)", stats.transactions24h],
     ["Referrals", stats.referralsTotal],
     ["Audit events (24h)", stats.auditEvents24h],
-    ["Lockouts (7d)", stats.lockouts7d]
+    ["Lockouts (7d)", stats.lockouts7d],
+    ["YouTube active hash", formatNumber(stats.youtubeActiveHash, 2)],
+    ["YouTube claims (24h)", stats.youtubeClaims24h],
+    ["YouTube users (24h)", stats.youtubeUsers24h],
+    ["Server CPU", `${formatPercent(stats.serverCpuUsagePercent)} (${Number(stats.serverCpuCores || 0)} cores)`],
+    ["Load avg (1m/5m/15m)", stats.serverLoadAvgSupported === false
+      ? "N/A on Windows"
+      : `${formatCompactNumber(stats.serverLoadAvg1m, 2)} / ${formatCompactNumber(stats.serverLoadAvg5m, 2)} / ${formatCompactNumber(stats.serverLoadAvg15m, 2)}`],
+    ["Server RAM used", `${formatBytes(stats.serverMemoryUsedBytes)} / ${formatBytes(stats.serverMemoryTotalBytes)} (${formatPercent(stats.serverMemoryUsagePercent)})`],
+    ["Server RAM free", formatBytes(stats.serverMemoryFreeBytes)],
+    ["Storage used", `${formatBytes(stats.serverDiskUsedBytes)} / ${formatBytes(stats.serverDiskTotalBytes)} (${formatPercent(stats.serverDiskUsagePercent)})`],
+    ["Storage free", formatBytes(stats.serverDiskFreeBytes)],
+    ["Node RSS", formatBytes(stats.processRssBytes)],
+    ["Node heap", `${formatBytes(stats.processHeapUsedBytes)} / ${formatBytes(stats.processHeapTotalBytes)}`],
+    ["Node external", formatBytes(stats.processExternalBytes)],
+    ["Process uptime", `${formatCompactNumber(stats.processUptimeSeconds, 0)}s`]
   ];
 
   for (const [label, value] of items) {
@@ -144,6 +311,14 @@ function renderUsers(users) {
       <td>${escapeHtml(user.id)}</td>
       <td>${escapeHtml(user.email || "--")}</td>
       <td>${escapeHtml(user.username || user.name || "--")}</td>
+      <td>${escapeHtml(user.ip || "--")}</td>
+      <td>${escapeHtml(formatCompactNumber(user.pool_balance, 6))}</td>
+      <td>${escapeHtml(formatCompactNumber(user.base_hash_rate, 2))}</td>
+      <td>${escapeHtml(String(Number(user.faucet_claims || 0)))}</td>
+      <td>${escapeHtml(String(Number(user.shortlink_daily_runs || 0)))}</td>
+      <td>${escapeHtml(String(Number(user.auto_gpu_claims || 0)))}</td>
+      <td>${escapeHtml(String(Number(user.youtube_claims || 0)))}</td>
+      <td>${escapeHtml(formatCompactNumber(user.youtube_active_hash, 2))}</td>
       <td>${escapeHtml(formatDate(user.created_at))}</td>
       <td>${escapeHtml(formatDate(user.last_login_at))}</td>
       <td><span class="pill ${isBanned ? "bad" : "good"}">${isBanned ? "Yes" : "No"}</span></td>
@@ -363,6 +538,7 @@ function renderTable(miners) {
       </td>
       <td><input type="text" name="imageUrl" value="${escapeHtml(miner.image_url || "")}" /></td>
       <td><input type="checkbox" name="isActive" ${Number(miner.is_active) === 1 ? "checked" : ""} /></td>
+      <td><input type="checkbox" name="showInShop" ${Number(miner.show_in_shop) === 1 ? "checked" : ""} /></td>
       <td><button class="btn small" type="button">Save</button></td>
     `;
 
@@ -393,7 +569,8 @@ function getRowPayload(row) {
     price: Number(getValue("price")),
     slotSize: Number(getValue("slotSize")),
     imageUrl: getValue("imageUrl").trim() || null,
-    isActive: getChecked("isActive")
+    isActive: getChecked("isActive"),
+    showInShop: getChecked("showInShop")
   };
 }
 
@@ -419,14 +596,26 @@ createForm?.addEventListener("submit", async (event) => {
   try {
     setStatus("Creating...", "info");
     const formData = new FormData(createForm);
+    const imageFile = formData.get("imageFile");
+    let imageUrl = String(formData.get("imageUrl") || "").trim() || null;
+
+    if (imageFile instanceof File && imageFile.size > 0) {
+      setStatus("Uploading image...", "info");
+      imageUrl = await uploadMinerImage(imageFile);
+      if (createImageUrlInput && imageUrl) {
+        createImageUrlInput.value = imageUrl;
+      }
+    }
+
     const payload = {
       name: String(formData.get("name") || "").trim(),
       slug: String(formData.get("slug") || "").trim(),
       baseHashRate: Number(formData.get("baseHashRate")),
       price: Number(formData.get("price")),
       slotSize: Number(formData.get("slotSize")),
-      imageUrl: String(formData.get("imageUrl") || "").trim() || null,
-      isActive: Boolean(formData.get("isActive"))
+      imageUrl,
+      isActive: Boolean(formData.get("isActive")),
+      showInShop: Boolean(formData.get("showInShop"))
     };
 
     await request("/api/admin/miners", {
@@ -436,6 +625,7 @@ createForm?.addEventListener("submit", async (event) => {
 
     createForm.reset();
     createForm.querySelector("[name='isActive']").checked = true;
+    createForm.querySelector("[name='showInShop']").checked = true;
     await loadMiners();
     setStatus("Miner created.", "success");
   } catch (error) {
@@ -444,6 +634,7 @@ createForm?.addEventListener("submit", async (event) => {
 });
 
 refreshButton?.addEventListener("click", () => loadMiners());
+exportDbButton?.addEventListener("click", () => exportDatabase());
 
 refreshButton?.addEventListener("click", () => {
   loadStats();

@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>BlockMiner | Chat</title>
+    <link rel="stylesheet" href="/css/layout.css" />
+    <link rel="stylesheet" href="/css/feature-pages.css" />
+  </head>
+  <body class="chat-theme">
+    <div id="layoutInclude"></div>
+    <main class="feature-page chat-page">
+      <section class="feature-card">
+        <h1>Chat</h1>
+        <p class="feature-subtitle">Chat in real time with other miners.</p>
+      </section>
+      <section class="feature-card chat-wrapper">
+        <div id="chatMessages" class="chat-messages"></div>
+        <form id="chatForm" class="chat-form">
+          <div class="chat-input-row">
+            <input id="chatInput" type="text" maxlength="500" placeholder="Type your message..." required />
+            <button id="emojiToggle" type="button" class="chat-emoji-btn" aria-label="Open emoji picker">😊</button>
+            <button type="submit" class="chat-send">Send</button>
+          </div>
+          <div id="emojiPicker" class="emoji-picker" hidden></div>
+        </form>
+      </section>
+    </main>
+    <script src="/js/layout.js"></script>
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="/js/chat.js"></script>
+  </body>
+</html>
