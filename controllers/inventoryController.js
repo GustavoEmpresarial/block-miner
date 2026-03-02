@@ -5,6 +5,24 @@ const { getOrCreateMinerProfile } = require("../models/minerProfileModel");
 const { getSlotSizeForMiner } = require("../utils/minerUtils");
 const { run } = require("../models/db");
 const DEFAULT_MINER_IMAGE_URL = "/assets/machines/reward1.png";
+const SLOTS_PER_RACK = 8;
+
+function getRackAndLocalSlot(slotIndex) {
+  const safeSlotIndex = Number.isInteger(slotIndex) && slotIndex >= 0 ? slotIndex : 0;
+  const rack = Math.floor(safeSlotIndex / SLOTS_PER_RACK) + 1;
+  const localSlot = (safeSlotIndex % SLOTS_PER_RACK) + 1;
+
+  return { rack, localSlot };
+}
+
+function formatRackSlotLabel(slotIndex, slotSize = 1) {
+  const { rack, localSlot } = getRackAndLocalSlot(slotIndex);
+  if (slotSize > 1) {
+    return `Rack ${rack}, slots ${localSlot}-${localSlot + slotSize - 1}`;
+  }
+
+  return `Rack ${rack}, slot ${localSlot}`;
+}
 
 function normalizeMinerIdentifier(value) {
   return String(value || "")
@@ -171,7 +189,8 @@ function createInventoryController({ io, syncUserBaseHashRate }) {
       // Check if required slots are available
       const slotsAvailable = await machineModel.checkSlotAvailability(req.user.id, slotIndex, slotSize);
       if (!slotsAvailable) {
-        res.status(400).json({ ok: false, message: `Slot ${slotIndex + 1} is already occupied or doesn't have enough space.` });
+        const slotLabel = formatRackSlotLabel(slotIndex, slotSize);
+        res.status(400).json({ ok: false, message: `${slotLabel} is already occupied or doesn't have enough space.` });
         return;
       }
 
@@ -209,7 +228,7 @@ function createInventoryController({ io, syncUserBaseHashRate }) {
       io.to(`user:${req.user.id}`).emit("inventory:update", { inventory });
       io.to(`user:${req.user.id}`).emit("machines:update", { machines });
 
-      const slotsText = slotSize > 1 ? `slots ${slotIndex + 1}-${slotIndex + slotSize}` : `slot ${slotIndex + 1}`;
+      const slotsText = formatRackSlotLabel(slotIndex, slotSize);
       res.json({
         ok: true,
         message: `${inventoryItem.miner_name} installed in ${slotsText}!`,
