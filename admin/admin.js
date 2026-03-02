@@ -269,7 +269,15 @@ async function exportDatabase() {
 
 createImageFileInput?.addEventListener("change", () => {
   const file = createImageFileInput.files?.[0];
-  if (!(file instanceof File) || !createImageUrlInput) {
+  if (!createImageUrlInput) {
+    return;
+  }
+
+  if (!(file instanceof File) || file.size <= 0) {
+    if (String(createImageUrlInput.value || "").trim().startsWith("/assets/machines/uploaded/")) {
+      createImageUrlInput.value = "";
+      updateImagePreview(createImagePreviewImg, createImagePreviewEmpty, "");
+    }
     return;
   }
 
@@ -698,10 +706,32 @@ createForm?.addEventListener("submit", async (event) => {
       showInShop: Boolean(formData.get("showInShop"))
     };
 
-    await request("/api/admin/miners", {
-      method: "POST",
-      body: JSON.stringify(payload)
-    });
+    try {
+      await request("/api/admin/miners", {
+        method: "POST",
+        body: JSON.stringify(payload)
+      });
+    } catch (error) {
+      const message = String(error?.message || "");
+      const hasFileSelected = imageFile instanceof File && imageFile.size > 0;
+      const hasUploadedPath = String(payload.imageUrl || "").startsWith("/assets/machines/uploaded/");
+
+      if (!hasFileSelected && hasUploadedPath && message.includes("Image file was not found in /assets/machines")) {
+        payload.imageUrl = null;
+        if (createImageUrlInput) {
+          createImageUrlInput.value = "";
+          updateImagePreview(createImagePreviewImg, createImagePreviewEmpty, "");
+        }
+
+        setStatus("Uploaded image path was invalid. Creating miner without image...", "info");
+        await request("/api/admin/miners", {
+          method: "POST",
+          body: JSON.stringify(payload)
+        });
+      } else {
+        throw error;
+      }
+    }
 
     createForm.reset();
     createForm.querySelector("[name='isActive']").checked = true;
