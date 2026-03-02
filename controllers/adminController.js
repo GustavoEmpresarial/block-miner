@@ -185,20 +185,20 @@ function normalizeImageUrl(value) {
   return text.length > 0 ? text : null;
 }
 
-async function validateUploadedMinerImagePath(imageUrl) {
+async function validateLocalMinerImagePath(imageUrl) {
   if (!imageUrl) {
     return { ok: true };
   }
 
   const normalizedUrl = String(imageUrl).replace(/\\/g, "/").trim();
-  const uploadPrefix = "/assets/machines/uploaded/";
+  const machinesPrefix = "/assets/machines/";
 
-  if (!normalizedUrl.startsWith(uploadPrefix)) {
+  if (!normalizedUrl.startsWith(machinesPrefix)) {
     return { ok: true };
   }
 
   const safePublicPath = path.posix.normalize(normalizedUrl);
-  if (!safePublicPath.startsWith(uploadPrefix) || safePublicPath.includes("..")) {
+  if (!safePublicPath.startsWith(machinesPrefix) || safePublicPath.includes("..")) {
     return { ok: false, message: "Invalid uploaded image path." };
   }
 
@@ -207,7 +207,7 @@ async function validateUploadedMinerImagePath(imageUrl) {
     await fs.access(absoluteFilePath);
     return { ok: true };
   } catch {
-    return { ok: false, message: "Uploaded image file was not found. Upload the image again before saving the miner." };
+    return { ok: false, message: "Image file was not found in /assets/machines. Check the path before saving." };
   }
 }
 
@@ -506,7 +506,7 @@ function createAdminController() {
       return;
     }
 
-    const imageValidation = await validateUploadedMinerImagePath(validation.value.imageUrl);
+    const imageValidation = await validateLocalMinerImagePath(validation.value.imageUrl);
     if (!imageValidation.ok) {
       res.status(400).json({ ok: false, message: imageValidation.message });
       return;
@@ -538,7 +538,7 @@ function createAdminController() {
       return;
     }
 
-    const imageValidation = await validateUploadedMinerImagePath(validation.value.imageUrl);
+    const imageValidation = await validateLocalMinerImagePath(validation.value.imageUrl);
     if (!imageValidation.ok) {
       res.status(400).json({ ok: false, message: imageValidation.message });
       return;

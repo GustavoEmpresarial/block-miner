@@ -126,6 +126,14 @@ function render(miners) {
   const offset = (currentPage - 1) * pageSize;
   const pageItems = filtered.slice(offset, offset + pageSize);
 
+  const imageUrlCount = new Map();
+  for (const item of filtered) {
+    const key = String(item?.image_url || "").trim();
+    if (!key) continue;
+    imageUrlCount.set(key, Number(imageUrlCount.get(key) || 0) + 1);
+  }
+  const duplicatedCount = Array.from(imageUrlCount.values()).filter((value) => value > 1).length;
+
   table.innerHTML = "";
   for (const m of pageItems) {
     const row = document.createElement("tr");
@@ -142,9 +150,9 @@ function render(miners) {
           <img class="miner-image-preview" data-role="row-preview-img" alt="Miner preview" />
           <span class="miner-image-preview-empty" data-role="row-preview-empty">No image</span>
         </div>
-        <input type="hidden" name="imageUrl" value="${esc(m.image_url || "")}" />
         <input type="hidden" name="slotSize" value="${Number(m.slot_size || 1)}" />
       </td>
+      <td><input type="text" name="imageUrl" value="${esc(m.image_url || "")}" placeholder="/assets/machines/..." /></td>
       <td><input type="checkbox" name="showInShop" ${Number(m.show_in_shop) === 1 ? "checked" : ""} /></td>
       <td><input type="checkbox" name="isActive" ${Number(m.is_active) === 1 ? "checked" : ""} /></td>
       <td>
@@ -157,16 +165,32 @@ function render(miners) {
 
     const previewImg = row.querySelector('[data-role="row-preview-img"]');
     const previewEmpty = row.querySelector('[data-role="row-preview-empty"]');
+    const imageUrlInput = row.querySelector('[name="imageUrl"]');
     const saveButton = row.querySelector('[data-action="save-row"]');
     const toggleButton = row.querySelector('[data-action="toggle-shop"]');
 
-    updateImagePreview(previewImg, previewEmpty, m.image_url || "");
+    const initialImageUrl = String(m.image_url || "").trim();
+    updateImagePreview(previewImg, previewEmpty, initialImageUrl);
+    if (initialImageUrl && Number(imageUrlCount.get(initialImageUrl) || 0) > 1) {
+      imageUrlInput?.classList.add("duplicate-image-url");
+      imageUrlInput?.setAttribute("title", "Duplicated image URL used by multiple miners");
+    }
+
+    imageUrlInput?.addEventListener("input", () => {
+      updateImagePreview(previewImg, previewEmpty, imageUrlInput.value);
+      imageUrlInput.classList.remove("duplicate-image-url");
+      imageUrlInput.removeAttribute("title");
+    });
+
     saveButton?.addEventListener("click", () => saveRow(row));
     toggleButton?.addEventListener("click", () => toggleMinerShopOnly(m.id, !isInShop));
     table.appendChild(row);
   }
 
   pageInfo.textContent = `Page ${currentPage}/${pageMax} · Total ${total}`;
+  if (duplicatedCount > 0) {
+    setStatus(`Warning: ${duplicatedCount} duplicated image URL(s) detected in this filter.`, "error");
+  }
 }
 
 async function loadMiners() {
