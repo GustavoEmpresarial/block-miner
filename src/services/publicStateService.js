@@ -19,21 +19,27 @@ function createPublicStateService({ engine, get, run, all }) {
 
   async function getActiveMiniGameHashRateTotal() {
     const now = Date.now();
-    const gameRow = await get("SELECT COALESCE(SUM(hash_rate), 0) as total FROM users_powers_games WHERE expires_at > ?", [now]);
+    const gameRow = await get(
+      "SELECT COALESCE(SUM(hash_rate), 0) as total FROM users_powers_games WHERE is_expired = 0 AND expires_at > ?",
+      [now]
+    );
     return Number(gameRow?.total || 0);
   }
 
   async function getActiveYoutubeHashRateTotal() {
     const now = Date.now();
-    const youtubeRow = await get("SELECT COALESCE(SUM(hash_rate), 0) as total FROM youtube_watch_user_powers WHERE expires_at > ?", [now]);
+    const youtubeRow = await get(
+      "SELECT COALESCE(SUM(hash_rate), 0) as total FROM youtube_watch_user_powers WHERE is_expired = 0 AND expires_at > ?",
+      [now]
+    );
     return Number(youtubeRow?.total || 0);
   }
 
   async function getActiveGameHashRateTotal() {
     const now = Date.now();
     const [gameRow, youtubeRow] = await Promise.all([
-      get("SELECT COALESCE(SUM(hash_rate), 0) as total FROM users_powers_games WHERE expires_at > ?", [now]),
-      get("SELECT COALESCE(SUM(hash_rate), 0) as total FROM youtube_watch_user_powers WHERE expires_at > ?", [now])
+      get("SELECT COALESCE(SUM(hash_rate), 0) as total FROM users_powers_games WHERE is_expired = 0 AND expires_at > ?", [now]),
+      get("SELECT COALESCE(SUM(hash_rate), 0) as total FROM youtube_watch_user_powers WHERE is_expired = 0 AND expires_at > ?", [now])
     ]);
 
     return Number(gameRow?.total || 0) + Number(youtubeRow?.total || 0);
@@ -45,7 +51,7 @@ function createPublicStateService({ engine, get, run, all }) {
     }
     const now = Date.now();
     const gameRow = await get(
-      "SELECT COALESCE(SUM(hash_rate), 0) as total FROM users_powers_games WHERE user_id = ? AND expires_at > ?",
+      "SELECT COALESCE(SUM(hash_rate), 0) as total FROM users_powers_games WHERE user_id = ? AND is_expired = 0 AND expires_at > ?",
       [userId, now]
     );
 
@@ -58,7 +64,7 @@ function createPublicStateService({ engine, get, run, all }) {
     }
     const now = Date.now();
     const youtubeRow = await get(
-      "SELECT COALESCE(SUM(hash_rate), 0) as total FROM youtube_watch_user_powers WHERE user_id = ? AND expires_at > ?",
+      "SELECT COALESCE(SUM(hash_rate), 0) as total FROM youtube_watch_user_powers WHERE user_id = ? AND is_expired = 0 AND expires_at > ?",
       [userId, now]
     );
 
@@ -89,11 +95,11 @@ function createPublicStateService({ engine, get, run, all }) {
         [userId]
       ),
       get(
-        "SELECT COALESCE(SUM(hash_rate), 0) as total FROM users_powers_games WHERE user_id = ? AND expires_at > ?",
+        "SELECT COALESCE(SUM(hash_rate), 0) as total FROM users_powers_games WHERE user_id = ? AND is_expired = 0 AND expires_at > ?",
         [userId, now]
       ),
       get(
-        "SELECT COALESCE(SUM(hash_rate), 0) as total FROM youtube_watch_user_powers WHERE user_id = ? AND expires_at > ?",
+        "SELECT COALESCE(SUM(hash_rate), 0) as total FROM youtube_watch_user_powers WHERE user_id = ? AND is_expired = 0 AND expires_at > ?",
         [userId, now]
       )
     ]);
@@ -178,13 +184,13 @@ function createPublicStateService({ engine, get, run, all }) {
         LEFT JOIN (
           SELECT user_id, COALESCE(SUM(hash_rate), 0) AS active_game_hash
           FROM users_powers_games
-          WHERE expires_at > ?
+          WHERE is_expired = 0 AND expires_at > ?
           GROUP BY user_id
         ) g ON g.user_id = utp.user_id
         LEFT JOIN (
           SELECT user_id, COALESCE(SUM(hash_rate), 0) AS active_youtube_hash
           FROM youtube_watch_user_powers
-          WHERE expires_at > ?
+          WHERE is_expired = 0 AND expires_at > ?
           GROUP BY user_id
         ) y ON y.user_id = utp.user_id
         WHERE (COALESCE(m.active_machine_hash, 0) + COALESCE(g.active_game_hash, 0) + COALESCE(y.active_youtube_hash, 0)) > 0

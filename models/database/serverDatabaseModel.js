@@ -169,8 +169,8 @@ async function fetchAdminFinanceActivity({ txWhereSql, txParams, payoutWhereSql,
 
 async function fetchAdminYoutubeStats(now, dayAgo) {
   const [activeHashRow, activeUsersRow, totalsRow, dayRow] = await Promise.all([
-    get("SELECT COALESCE(SUM(hash_rate), 0) AS total FROM youtube_watch_user_powers WHERE expires_at > ?", [now]),
-    get("SELECT COUNT(DISTINCT user_id) AS total FROM youtube_watch_user_powers WHERE expires_at > ?", [now]),
+    get("SELECT COALESCE(SUM(hash_rate), 0) AS total FROM youtube_watch_user_powers WHERE is_expired = 0 AND expires_at > ?", [now]),
+    get("SELECT COUNT(DISTINCT user_id) AS total FROM youtube_watch_user_powers WHERE is_expired = 0 AND expires_at > ?", [now]),
     get("SELECT COUNT(*) AS claims, COALESCE(SUM(hash_rate), 0) AS hash_granted FROM youtube_watch_power_history"),
     get(
       "SELECT COUNT(*) AS claims_24h, COALESCE(SUM(hash_rate), 0) AS hash_granted_24h, COUNT(DISTINCT user_id) AS users_24h FROM youtube_watch_power_history WHERE claimed_at >= ?",
@@ -308,7 +308,7 @@ async function getEstimatedRewardRows(userId) {
 async function getYoutubeStatusRows(userId, now) {
   const [activeRow, latestClaim] = await Promise.all([
     get(
-      "SELECT COALESCE(SUM(hash_rate), 0) AS total FROM youtube_watch_user_powers WHERE user_id = ? AND expires_at > ?",
+      "SELECT COALESCE(SUM(hash_rate), 0) AS total FROM youtube_watch_user_powers WHERE user_id = ? AND is_expired = 0 AND expires_at > ?",
       [userId, now]
     ),
     get("SELECT claimed_at FROM youtube_watch_power_history WHERE user_id = ? ORDER BY claimed_at DESC LIMIT 1", [userId])
@@ -320,7 +320,7 @@ async function getYoutubeStatusRows(userId, now) {
 async function getYoutubeUserStatsRows(userId, now, dayAgo) {
   const [activeRow, totalsRow, dayRow, latestClaim] = await Promise.all([
     get(
-      "SELECT COALESCE(SUM(hash_rate), 0) AS total FROM youtube_watch_user_powers WHERE user_id = ? AND expires_at > ?",
+      "SELECT COALESCE(SUM(hash_rate), 0) AS total FROM youtube_watch_user_powers WHERE user_id = ? AND is_expired = 0 AND expires_at > ?",
       [userId, now]
     ),
     get(
@@ -344,7 +344,7 @@ async function getLatestYoutubeClaim(userId) {
 async function grantYoutubeReward({ userId, rewardGh, now, expiresAt, sourceVideoId }) {
   return Promise.all([
     run(
-      "INSERT INTO youtube_watch_user_powers (user_id, hash_rate, claimed_at, expires_at, source_video_id) VALUES (?, ?, ?, ?, ?)",
+      "INSERT INTO youtube_watch_user_powers (user_id, hash_rate, claimed_at, expires_at, is_expired, source_video_id) VALUES (?, ?, ?, ?, 0, ?)",
       [userId, rewardGh, now, expiresAt, sourceVideoId]
     ),
     run(
@@ -380,13 +380,13 @@ async function getOrCreateGame(slug, name) {
 async function insertMemoryClaim({ userId, gameId, rewardGh, now, expiresAt, checkinId }) {
   if (checkinId) {
     return run(
-      "INSERT INTO users_powers_games (user_id, game_id, hash_rate, played_at, expires_at, checkin_id) VALUES (?, ?, ?, ?, ?, ?)",
+      "INSERT INTO users_powers_games (user_id, game_id, hash_rate, played_at, expires_at, is_expired, checkin_id) VALUES (?, ?, ?, ?, ?, 0, ?)",
       [userId, gameId, rewardGh, now, expiresAt, checkinId]
     );
   }
 
   return run(
-    "INSERT INTO users_powers_games (user_id, game_id, hash_rate, played_at, expires_at) VALUES (?, ?, ?, ?, ?)",
+    "INSERT INTO users_powers_games (user_id, game_id, hash_rate, played_at, expires_at, is_expired) VALUES (?, ?, ?, ?, ?, 0)",
     [userId, gameId, rewardGh, now, expiresAt]
   );
 }

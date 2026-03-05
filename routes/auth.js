@@ -5,7 +5,7 @@ const { z } = require("zod");
 const { run, get } = require("../src/db/sqlite");
 const { getTokenFromRequest, getRefreshTokenFromRequest, ACCESS_COOKIE_NAME, REFRESH_COOKIE_NAME } = require("../utils/token");
 const { signAccessToken, createRefreshToken, parseRefreshToken, verifyAccessToken } = require("../utils/authTokens");
-const { createRefreshTokenRecord, getRefreshTokenById, revokeRefreshToken } = require("../models/refreshTokenModel");
+const { createRefreshTokenRecord, getRefreshTokenById, revokeRefreshToken, revokeRefreshTokensForUser } = require("../models/refreshTokenModel");
 const { updateUserLoginMeta } = require("../models/userModel");
 const { createAuditLog } = require("../models/auditLogModel");
 const { createRateLimiter } = require("../middleware/rateLimit");
@@ -144,13 +144,19 @@ async function auditAuthEvent(req, { userId, action, details }) {
   }
 }
 
-function buildCookie(name, value, maxAgeSeconds) {
+function buildCookie(name, value, maxAgeSeconds, options = {}) {
+  const {
+    sameSite = "Strict",
+    path = "/"
+  } = options;
+
   const parts = [
     `${name}=${encodeURIComponent(value)}`,
     `Max-Age=${maxAgeSeconds}`,
-    "Path=/",
+    `Path=${path}`,
     "HttpOnly",
-    "SameSite=Lax"
+    `SameSite=${sameSite}`,
+    "Priority=High"
   ];
 
   if (process.env.NODE_ENV === "production") {
@@ -164,18 +170,19 @@ function buildAccessCookie(accessToken) {
   const payload = verifyAccessToken(accessToken);
   const expSeconds = Number(payload?.exp || 0);
   const maxAgeSeconds = Math.max(0, expSeconds - Math.floor(Date.now() / 1000));
-  return buildCookie(ACCESS_COOKIE_NAME, accessToken, maxAgeSeconds);
+  return buildCookie(ACCESS_COOKIE_NAME, accessToken, maxAgeSeconds, { sameSite: "Strict", path: "/" });
 }
 
 function buildRefreshCookie(refreshToken, expiresAt) {
   const maxAgeSeconds = Math.max(0, Math.floor((expiresAt - Date.now()) / 1000));
-  return buildCookie(REFRESH_COOKIE_NAME, refreshToken, maxAgeSeconds);
+  return buildCookie(REFRESH_COOKIE_NAME, refreshToken, maxAgeSeconds, { sameSite: "Strict", path: "/api/auth" });
 }
 
 function clearAuthCookies() {
-  const access = buildCookie(ACCESS_COOKIE_NAME, "", 0);
-  const refresh = buildCookie(REFRESH_COOKIE_NAME, "", 0);
-  return [access, refresh];
+  const access = buildCookie(ACCESS_COOKIE_NAME, "", 0, { sameSite: "Strict", path: "/" });
+  const refreshApi = buildCookie(REFRESH_COOKIE_NAME, "", 0, { sameSite: "Strict", path: "/api/auth" });
+  const refreshRootCompat = buildCookie(REFRESH_COOKIE_NAME, "", 0, { sameSite: "Strict", path: "/" });
+  return [access, refreshApi, refreshRootCompat];
 }
 
 async function generateUniqueRefCode() {
@@ -537,13 +544,29 @@ authRouter.post("/refresh", refreshLimiter, async (req, res) => {
     }
 
     const existing = await getRefreshTokenById(parsed.tokenId);
-    if (!existing || existing.revoked_at || existing.expires_at <= Date.now()) {
+    if (!existing || existing.expires_at <= Date.now()) {
       await auditAuthEvent(req, { userId: null, action: "refresh_failed", details: { reason: "token_missing_or_revoked" } });
       res.status(401).json({ ok: false, message: "Refresh token invalid." });
       return;
     }
 
+    if (existing.revoked_at) {
+      if (existing.user_id) {
+        await revokeRefreshTokensForUser(existing.user_id);
+      }
+      await auditAuthEvent(req, {
+        userId: existing.user_id || null,
+        action: "refresh_reuse_detected",
+        details: { tokenId: parsed.tokenId }
+      });
+      res.status(401).json({ ok: false, message: "Refresh token invalid." });
+      return;
+    }
+
     if (existing.token_hash !== parsed.tokenHash) {
+      if (existing.user_id) {
+        await revokeRefreshTokensForUser(existing.user_id);
+      }
       await auditAuthEvent(req, { userId: existing.user_id || null, action: "refresh_failed", details: { reason: "hash_mismatch" } });
       res.status(401).json({ ok: false, message: "Refresh token invalid." });
       return;

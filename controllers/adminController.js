@@ -5,6 +5,7 @@ const path = require("path");
 const fs = require("fs/promises");
 const { execFile } = require("child_process");
 const { promisify } = require("util");
+const logger = require("../utils/logger").getLogger("AdminController");
 
 const execFileAsync = promisify(execFile);
 const IMAGE_FALLBACK_CANDIDATES = [
@@ -457,7 +458,7 @@ function createAdminController() {
         ),
         get("SELECT COUNT(*) AS count FROM referrals"),
         get("SELECT COUNT(*) AS count FROM audit_logs WHERE created_at >= ?", [dayAgo]),
-        get("SELECT COALESCE(SUM(hash_rate), 0) AS total FROM youtube_watch_user_powers WHERE expires_at > ?", [now]),
+        get("SELECT COALESCE(SUM(hash_rate), 0) AS total FROM youtube_watch_user_powers WHERE is_expired = 0 AND expires_at > ?", [now]),
         get("SELECT COUNT(*) AS count FROM youtube_watch_power_history WHERE claimed_at >= ?", [dayAgo]),
         get("SELECT COUNT(DISTINCT user_id) AS count FROM youtube_watch_power_history WHERE claimed_at >= ?", [dayAgo])
       ]);
@@ -492,7 +493,7 @@ function createAdminController() {
         }
       });
     } catch (error) {
-      console.error("Admin stats error:", error);
+      logger.error("Admin stats error", { error: error?.message || String(error), stack: error?.stack });
       res.status(500).json({ ok: false, message: "Unable to load admin stats." });
     }
   }
@@ -502,7 +503,7 @@ function createAdminController() {
       const metrics = await collectServerMetrics();
       res.json({ ok: true, metrics });
     } catch (error) {
-      console.error("Admin server metrics error:", error);
+      logger.error("Admin server metrics error", { error: error?.message || String(error), stack: error?.stack });
       res.status(500).json({ ok: false, message: "Unable to load server metrics." });
     }
   }
@@ -592,7 +593,7 @@ function createAdminController() {
           LEFT JOIN (
             SELECT user_id, COALESCE(SUM(hash_rate), 0) AS active_hash
             FROM youtube_watch_user_powers
-            WHERE expires_at > ?
+            WHERE is_expired = 0 AND expires_at > ?
             GROUP BY user_id
           ) ytp ON ytp.user_id = u.id
           ${whereSql}
@@ -610,7 +611,7 @@ function createAdminController() {
         total: Number(totalRow?.total || 0)
       });
     } catch (error) {
-      console.error("Admin list users error:", error);
+      logger.error("Admin list users error", { error: error?.message || String(error), stack: error?.stack });
       res.status(500).json({ ok: false, message: "Unable to load users." });
     }
   }
@@ -630,7 +631,7 @@ function createAdminController() {
       );
       res.json({ ok: true, logs });
     } catch (error) {
-      console.error("Admin list audit logs error:", error);
+      logger.error("Admin list audit logs error", { error: error?.message || String(error), stack: error?.stack });
       res.status(500).json({ ok: false, message: "Unable to load audit logs." });
     }
   }
@@ -648,7 +649,7 @@ function createAdminController() {
       const updated = await get("SELECT id, email, is_banned FROM users WHERE id = ?", [userId]);
       res.json({ ok: true, user: updated });
     } catch (error) {
-      console.error("Admin set user ban error:", error);
+      logger.error("Admin set user ban error", { error: error?.message || String(error), stack: error?.stack });
       res.status(500).json({ ok: false, message: "Unable to update user." });
     }
   }
@@ -658,7 +659,7 @@ function createAdminController() {
       const miners = await minersModel.listAllMiners();
       res.json({ ok: true, miners });
     } catch (error) {
-      console.error("Admin list miners error:", error);
+      logger.error("Admin list miners error", { error: error?.message || String(error), stack: error?.stack });
       res.status(500).json({ ok: false, message: "Unable to load miners." });
     }
   }
@@ -690,7 +691,7 @@ function createAdminController() {
         res.status(409).json({ ok: false, message: "Slug already exists." });
         return;
       }
-      console.error("Admin create miner error:", error);
+      logger.error("Admin create miner error", { error: error?.message || String(error), stack: error?.stack });
       res.status(500).json({ ok: false, message: "Unable to create miner." });
     }
   }
@@ -734,7 +735,7 @@ function createAdminController() {
         res.status(409).json({ ok: false, message: "Slug already exists." });
         return;
       }
-      console.error("Admin update miner error:", error);
+      logger.error("Admin update miner error", { error: error?.message || String(error), stack: error?.stack });
       res.status(500).json({ ok: false, message: "Unable to update miner." });
     }
   }
@@ -765,7 +766,7 @@ function createAdminController() {
         message: req.body.showInShop ? "Miner added to shop." : "Miner removed from shop."
       });
     } catch (error) {
-      console.error("Admin set miner shop visibility error:", error);
+      logger.error("Admin set miner shop visibility error", { error: error?.message || String(error), stack: error?.stack });
       res.status(500).json({ ok: false, message: "Unable to update shop visibility." });
     }
   }
@@ -787,7 +788,7 @@ function createAdminController() {
         }
       });
     } catch (error) {
-      console.error("Admin audit miner image duplicates error:", error);
+      logger.error("Admin audit miner image duplicates error", { error: error?.message || String(error), stack: error?.stack });
       res.status(500).json({ ok: false, message: "Unable to audit duplicate image URLs." });
     }
   }
@@ -815,7 +816,7 @@ function createAdminController() {
           : "No duplicate image URLs needed fixes for this scope."
       });
     } catch (error) {
-      console.error("Admin fix miner image duplicates error:", error);
+      logger.error("Admin fix miner image duplicates error", { error: error?.message || String(error), stack: error?.stack });
       res.status(500).json({ ok: false, message: "Unable to fix duplicate image URLs." });
     }
   }
@@ -828,7 +829,7 @@ function createAdminController() {
       const withdrawals = await walletModel.getPendingWithdrawals();
       res.json({ ok: true, withdrawals });
     } catch (error) {
-      console.error("Admin list pending withdrawals error:", error);
+      logger.error("Admin list pending withdrawals error", { error: error?.message || String(error), stack: error?.stack });
       res.status(500).json({ ok: false, message: "Unable to load pending withdrawals." });
     }
   }
@@ -873,7 +874,7 @@ function createAdminController() {
         }
       });
     } catch (error) {
-      console.error("Admin approve withdrawal error:", error);
+      logger.error("Admin approve withdrawal error", { error: error?.message || String(error), stack: error?.stack });
       res.status(500).json({ ok: false, message: "Unable to approve withdrawal." });
     }
   }
@@ -913,7 +914,7 @@ function createAdminController() {
         }
       });
     } catch (error) {
-      console.error("Admin reject withdrawal error:", error);
+      logger.error("Admin reject withdrawal error", { error: error?.message || String(error), stack: error?.stack });
       res.status(500).json({ ok: false, message: "Unable to reject withdrawal." });
     }
   }
@@ -959,7 +960,7 @@ function createAdminController() {
         }
       });
     } catch (error) {
-      console.error("Admin complete withdrawal error:", error);
+      logger.error("Admin complete withdrawal error", { error: error?.message || String(error), stack: error?.stack });
       res.status(500).json({ ok: false, message: "Unable to complete withdrawal." });
     }
   }

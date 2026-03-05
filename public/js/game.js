@@ -50,6 +50,19 @@ function formatCountdown(seconds) {
   return `${String(minutes).padStart(2, "0")}:${String(rest).padStart(2, "0")}`;
 }
 
+function formatDateTime(value) {
+  const ts = Number(value || 0);
+  if (!Number.isFinite(ts) || ts <= 0) {
+    return "-";
+  }
+
+  try {
+    return new Date(ts).toLocaleString();
+  } catch {
+    return "-";
+  }
+}
+
 function applyLiveState(payload) {
   if (!payload) {
     return;
@@ -244,6 +257,80 @@ function openModal(title, bodyHTML, actionsHTML) {
 
 function closeModal() {
   elements.machineModal.classList.remove("active");
+}
+
+async function loadDashboardUpdatesPopup() {
+  try {
+    const response = await fetch("/api/dashboard/updates/latest", {
+      credentials: "include"
+    });
+    const data = await response.json();
+
+    if (!response.ok || !data?.ok || !Array.isArray(data.updates) || data.updates.length === 0) {
+      return;
+    }
+
+    const latestVersion = String(data.updates[0]?.version || "").trim();
+    if (!latestVersion) {
+      return;
+    }
+
+    const seenKey = "bm_dashboard_update_seen_version";
+    const alreadySeenVersion = String(localStorage.getItem(seenKey) || "").trim();
+    if (alreadySeenVersion === latestVersion) {
+      return;
+    }
+
+    const rowsHtml = data.updates
+      .map((update) => {
+        const title = escapeHtml(update.title || "Update");
+        const version = escapeHtml(update.version || "-");
+        const createdAt = escapeHtml(formatDateTime(update.createdAt));
+        const description = escapeHtml(update.description || "").replace(/\n/g, "<br>");
+
+        return `
+          <tr>
+            <td><strong>${version}</strong></td>
+            <td>${title}</td>
+            <td>${createdAt}</td>
+          </tr>
+          <tr>
+            <td colspan="3">${description}</td>
+          </tr>
+        `;
+      })
+      .join("");
+
+    const bodyHTML = `
+      <div class="updates-popup-content">
+        <p>Confira as últimas atualizações da plataforma:</p>
+        <div style="overflow:auto; max-height: 360px;">
+          <table style="width:100%; border-collapse: collapse;">
+            <thead>
+              <tr>
+                <th style="text-align:left; padding:6px; border-bottom:1px solid rgba(109,131,179,0.4);">Versão</th>
+                <th style="text-align:left; padding:6px; border-bottom:1px solid rgba(109,131,179,0.4);">Título</th>
+                <th style="text-align:left; padding:6px; border-bottom:1px solid rgba(109,131,179,0.4);">Data</th>
+              </tr>
+            </thead>
+            <tbody>${rowsHtml}</tbody>
+          </table>
+        </div>
+      </div>
+    `;
+
+    const actionsHTML = '<button class="btn primary" onclick="window.markDashboardUpdatesSeen()">Entendi</button>';
+
+    window.markDashboardUpdatesSeen = () => {
+      localStorage.setItem(seenKey, latestVersion);
+      closeModal();
+      delete window.markDashboardUpdatesSeen;
+    };
+
+    openModal("Últimas atualizações", bodyHTML, actionsHTML);
+  } catch {
+    // ignore updates popup errors
+  }
 }
 
 function showConfirmDialog(message) {
@@ -790,6 +877,7 @@ function requestJoin() {
     await loadMachines();
     await loadInventory();
     renderState(response.state);
+    loadDashboardUpdatesPopup();
   });
 }
 

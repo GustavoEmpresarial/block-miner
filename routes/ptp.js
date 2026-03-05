@@ -34,8 +34,8 @@ router.get("/my-ads", requireAuth, ptpLimiter, ptpController.getMyAds);
 // GET /api/ptp/promo-hash - Obter hash de promoção do usuário
 router.get("/promo-hash", requireAuth, ptpLimiter, ptpController.getPromoHash);
 
-// POST /api/ptp/track-view - Rastrear exibição de anúncio
-router.post("/track-view", requireAuth, ptpWriteLimiter, validateBody(trackViewSchema), ptpController.trackView);
+// POST /api/ptp/track-view - Rastrear exibição de anúncio (público para links promocionais)
+router.post("/track-view", ptpWriteLimiter, validateBody(trackViewSchema), ptpController.trackView);
 
 // GET /api/ptp/earnings - Obter ganhos do usuário
 router.get("/earnings", requireAuth, ptpLimiter, ptpController.getEarnings);

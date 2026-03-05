@@ -2,6 +2,7 @@ const fs = require("fs/promises");
 const path = require("path");
 const { z } = require("zod");
 const { resolveMinerImageExtension, sanitizeMinerImageBaseName } = require("../utils/minerImage");
+const { all } = require("../../src/db/sqlite");
 
 function registerAppRoutes({
   app,
@@ -610,6 +611,38 @@ function registerAppRoutes({
   });
 
   app.get("/api/estimated-reward", requireAuth, serverDatabaseController.getEstimatedReward);
+  app.get("/api/dashboard/updates/latest", requireAuth, async (_req, res) => {
+    try {
+      const now = Date.now();
+      const updates = await all(
+        `
+          SELECT id, version, title, description, created_at, updated_at
+          FROM dashboard_updates
+          WHERE is_active = 1
+            AND (starts_at IS NULL OR starts_at <= ?)
+            AND (ends_at IS NULL OR ends_at >= ?)
+          ORDER BY COALESCE(starts_at, created_at) DESC, id DESC
+          LIMIT 5
+        `,
+        [now, now]
+      );
+
+      res.json({
+        ok: true,
+        updates: updates.map((row) => ({
+          id: Number(row.id),
+          version: String(row.version || ""),
+          title: String(row.title || ""),
+          description: String(row.description || ""),
+          createdAt: Number(row.created_at || 0),
+          updatedAt: Number(row.updated_at || 0)
+        }))
+      });
+    } catch (error) {
+      logger.error("Failed to load dashboard updates", { error: error?.message || "unknown_error" });
+      res.status(500).json({ ok: false, message: "Unable to load dashboard updates." });
+    }
+  });
   app.get("/api/games/youtube/status", requireAuth, serverDatabaseController.getYoutubeStatus);
   app.get("/api/games/youtube/stats", requireAuth, serverDatabaseController.getYoutubeStats);
   app.post("/api/games/youtube/claim", requireAuth, youtubeWatchClaimLimiter, validateBody(youtubeWatchClaimSchema), serverDatabaseController.claimYoutubeReward);

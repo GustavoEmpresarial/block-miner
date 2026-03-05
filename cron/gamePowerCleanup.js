@@ -12,21 +12,33 @@ function startGamePowerCleanup({ run }, options = {}) {
     await runCronAction({
       action: "cleanup_expired_game_powers",
       logStart: false,
-      prepare: async () => ({ now: Date.now(), hasRunFn: typeof run === "function" }),
+      prepare: async () => ({
+        now: Date.now(),
+        cutoff7d: Date.now() - 7 * 24 * 60 * 60 * 1000,
+        hasRunFn: typeof run === "function"
+      }),
       validate: async ({ hasRunFn }) => {
         if (!hasRunFn) {
           return { ok: false, reason: "missing_run_function" };
         }
         return { ok: true };
       },
-      sanitize: async ({ now }) => ({ now: Number(now) }),
-      execute: async ({ now }) => {
-        const result = await run("DELETE FROM users_powers_games WHERE expires_at <= ?", [now]);
-        return { deletedRows: Number(result?.changes || 0) };
+      sanitize: async ({ now, cutoff7d }) => ({ now: Number(now), cutoff7d: Number(cutoff7d) }),
+      execute: async ({ now, cutoff7d }) => {
+        const result = await run(
+          `
+            UPDATE users_powers_games
+            SET is_expired = 1
+            WHERE is_expired = 0
+              AND (expires_at <= ? OR played_at <= ?)
+          `,
+          [now, cutoff7d]
+        );
+        return { markedExpiredRows: Number(result?.changes || 0) };
       },
       confirm: async ({ executionResult }) => ({
         ok: true,
-        details: { deletedRows: executionResult.deletedRows }
+        details: { markedExpiredRows: executionResult.markedExpiredRows }
       })
     });
 
@@ -50,25 +62,30 @@ function startGamePowerCleanup({ run }, options = {}) {
       }),
       execute: async ({ now, cutoff24h }) => {
         const expiredResult = await run(
-          "DELETE FROM youtube_watch_user_powers WHERE expires_at <= ?",
+          `
+            UPDATE youtube_watch_user_powers
+            SET is_expired = 1
+            WHERE is_expired = 0
+              AND (expires_at <= ? OR claimed_at <= ?)
+          `,
+          [now, cutoff24h]
+        );
+
+        const historyResult = await run(
+          "UPDATE youtube_watch_power_history SET status = 'expired' WHERE status = 'granted' AND expires_at <= ?",
           [now]
         );
 
-        const olderThan24hResult = await run(
-          "DELETE FROM youtube_watch_user_powers WHERE claimed_at <= ?",
-          [cutoff24h]
-        );
-
         return {
-          deletedExpiredRows: Number(expiredResult?.changes || 0),
-          deletedOlderThan24hRows: Number(olderThan24hResult?.changes || 0)
+          markedExpiredRows: Number(expiredResult?.changes || 0),
+          markedHistoryExpiredRows: Number(historyResult?.changes || 0)
         };
       },
       confirm: async ({ executionResult }) => ({
         ok: true,
         details: {
-          deletedExpiredRows: executionResult.deletedExpiredRows,
-          deletedOlderThan24hRows: executionResult.deletedOlderThan24hRows
+          markedExpiredRows: executionResult.markedExpiredRows,
+          markedHistoryExpiredRows: executionResult.markedHistoryExpiredRows
         }
       })
     });

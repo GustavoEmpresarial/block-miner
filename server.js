@@ -50,6 +50,7 @@ const { registerMinerSocketHandlers } = require("./src/socket/registerMinerSocke
 const { createDatabaseBackup, getBackupConfig } = require("./utils/backup");
 const { createServerDatabaseController } = require("./controllers/database/serverDatabaseController");
 const serverDatabaseModel = require("./models/database/serverDatabaseModel");
+const { DEFAULT_RPC_URLS, buildRpcUrls, rpcCallWithFallback } = require("./utils/rpcClient");
 const logger = require("./utils/logger");
 const walletRouter = require("./routes/wallet");
 const swapRouter = require("./routes/swap");
@@ -115,17 +116,10 @@ setMiningEngine(engine);
 engine.setRewardLogger(logMiningReward); // Register reward logging callback
 const publicStateService = createPublicStateService({ engine, get, run, all });
 
-const DEFAULT_POLYGON_RPC_URLS = [
-  "https://polygon-bor-rpc.publicnode.com",
-  "https://polygon.drpc.org",
-  "https://poly.api.pocket.network",
-  "https://1rpc.io/matic",
-  "https://polygon.blockpi.network/v1/rpc/public",
-  "https://polygon.meowrpc.com",
-  "https://polygon-mainnet.public.blastapi.io",
-  "https://rpc-mainnet.matic.network"
-];
-const POLYGON_RPC_URLS = Array.from(new Set([POLYGON_RPC_URL, ...DEFAULT_POLYGON_RPC_URLS]));
+const POLYGON_RPC_URLS = buildRpcUrls({
+  primaryUrl: POLYGON_RPC_URL,
+  defaultUrls: DEFAULT_RPC_URLS
+});
 
 let usersPowersGamesHasCheckinId = null;
 
@@ -411,56 +405,8 @@ function isDirectApiNavigationRequest(req) {
   return false;
 }
 
-async function fetchWithTimeout(url, init, timeoutMs) {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), timeoutMs);
-
-  try {
-    return await fetch(url, { ...init, signal: controller.signal });
-  } finally {
-    clearTimeout(timeout);
-  }
-}
-
 async function rpcCall(method, params) {
-  let lastError = null;
-
-  const body = JSON.stringify({
-    jsonrpc: "2.0",
-    id: 1,
-    method,
-    params
-  });
-
-  for (const rpcUrl of POLYGON_RPC_URLS) {
-    try {
-      const response = await fetchWithTimeout(
-        rpcUrl,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body
-        },
-        POLYGON_RPC_TIMEOUT_MS
-      );
-
-      if (!response.ok) {
-        throw new Error(`RPC request failed (HTTP ${response.status})`);
-      }
-
-      const payload = await response.json();
-      if (payload.error) {
-        throw new Error(payload.error.message || "RPC error");
-      }
-
-      return payload.result;
-    } catch (error) {
-      lastError = error;
-      continue;
-    }
-  }
-
-  throw lastError || new Error("RPC request failed");
+  return rpcCallWithFallback(POLYGON_RPC_URLS, method, params, { timeoutMs: POLYGON_RPC_TIMEOUT_MS });
 }
 
 async function ensureCheckinConfirmed(checkin) {

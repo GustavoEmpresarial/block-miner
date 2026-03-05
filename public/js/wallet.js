@@ -19,6 +19,16 @@ const elements = {
   get withdrawSummaryAmount() { return document.getElementById("withdrawSummaryAmount"); },
   get withdrawSummaryTotal() { return document.getElementById("withdrawSummaryTotal"); },
   get withdrawSubmitBtn() { return document.getElementById("withdrawSubmitBtn"); },
+
+  // Deposit elements
+  get depositAddressInput() { return document.getElementById("depositAddressInput"); },
+  get extensionDepositForm() { return document.getElementById("extensionDepositForm"); },
+  get depositExtensionAmount() { return document.getElementById("depositExtensionAmount"); },
+  get depositExtensionBtn() { return document.getElementById("depositExtensionBtn"); },
+  get verifyDepositForm() { return document.getElementById("verifyDepositForm"); },
+  get verifyTxHash() { return document.getElementById("verifyTxHash"); },
+  get verifyDepositBtn() { return document.getElementById("verifyDepositBtn"); },
+  get pendingDepositsList() { return document.getElementById("pendingDepositsList"); },
   
   get transactionList() { return document.getElementById("transactionList"); },
   get refreshBalanceBtn() { return document.getElementById("refreshBalanceBtn"); },
@@ -35,6 +45,8 @@ const state = {
   balance: 0,
   lifetimeMined: 0,
   totalWithdrawn: 0,
+  depositAddress: null,
+  pendingDeposits: [],
   transactions: [],
   isConnecting: false  // Prevent multiple connection attempts
 };
@@ -181,13 +193,22 @@ async function loadDepositAddress() {
 
     if (data.ok && address) {
       state.depositAddress = address;
+      if (elements.depositAddressInput) {
+        elements.depositAddressInput.value = address;
+      }
     } else {
       state.depositAddress = null;
+      if (elements.depositAddressInput) {
+        elements.depositAddressInput.value = "Unavailable";
+      }
       window.notify?.(data.message || "Erro ao carregar endereço de depósito", "error");
     }
   } catch (error) {
     console.error("Error loading deposit address:", error);
     state.depositAddress = null;
+    if (elements.depositAddressInput) {
+      elements.depositAddressInput.value = "Unavailable";
+    }
     window.notify?.("Erro ao carregar endereço de depósito", "error");
   }
 }
@@ -265,6 +286,74 @@ async function verifyDepositTxWithRetry(txHash, maxAttempts = 18, delayMs = 5000
   return { ok: true, status: "pending", message: "Transação enviada. Aguarde a confirmação da rede." };
 }
 
+async function registerDepositTx(txHash) {
+  const response = await fetch("/api/wallet/verify-deposit", {
+    method: "POST",
+    credentials: "include",
+    keepalive: true,
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({ txHash })
+  });
+
+  let data = null;
+  try {
+    data = await response.json();
+  } catch {
+    data = null;
+  }
+
+  if (!response.ok && !data?.ok) {
+    throw new Error(data?.message || "Falha ao registrar depósito");
+  }
+
+  return data;
+}
+
+async function loadPendingDeposits() {
+  try {
+    const response = await fetch("/api/wallet/pending-deposits", { credentials: "include" });
+    const data = await response.json();
+    if (data?.ok) {
+      state.pendingDeposits = Array.isArray(data.deposits) ? data.deposits : [];
+      renderPendingDeposits();
+    }
+  } catch (error) {
+    console.error("Error loading pending deposits:", error);
+  }
+}
+
+function renderPendingDeposits() {
+  if (!elements.pendingDepositsList) {
+    return;
+  }
+
+  if (!state.pendingDeposits.length) {
+    elements.pendingDepositsList.innerHTML = `
+      <div class="history-empty">
+        <i class="bi bi-hourglass-split"></i>
+        <p>No pending deposits</p>
+      </div>
+    `;
+    return;
+  }
+
+  elements.pendingDepositsList.innerHTML = state.pendingDeposits.map((deposit) => `
+    <div class="transaction-item">
+      <div class="transaction-icon deposit">
+        <i class="bi bi-arrow-down-circle"></i>
+      </div>
+      <div class="transaction-details">
+        <div class="transaction-type">Deposit pending</div>
+        <div class="transaction-date">${escapeHtml(formatDate(deposit.createdAt))}</div>
+      </div>
+      <div class="transaction-amount deposit">+${formatNumber(deposit.amount)} POL</div>
+      <div class="transaction-status pending">Pending</div>
+    </div>
+  `).join("");
+}
+
 async function handleExtensionDeposit(event) {
   event.preventDefault();
 
@@ -313,13 +402,20 @@ async function handleExtensionDeposit(event) {
       ]
     });
 
-    window.notify?.("Transação enviada. Aguardando confirmação na rede...", "info");
+    const registerResult = await registerDepositTx(txHash);
+
+    window.notify?.(
+      registerResult?.status === "pending"
+        ? "Transação registrada. O crédito será aplicado automaticamente após confirmação, mesmo se você sair da wallet."
+        : (registerResult?.message || "Transação enviada. Aguardando confirmação na rede..."),
+      "info"
+    );
 
     if (elements.depositExtensionBtn) {
       elements.depositExtensionBtn.innerHTML = '<i class="bi bi-arrow-repeat"></i> Validando...';
     }
 
-    const verification = await verifyDepositTxWithRetry(txHash);
+    const verification = await verifyDepositTxWithRetry(txHash, 6, 5000);
 
     if (verification?.ok && verification?.status !== "pending") {
       window.notify?.(verification.message || "Depósito confirmado e saldo atualizado.", "success");
@@ -327,11 +423,13 @@ async function handleExtensionDeposit(event) {
         elements.depositExtensionAmount.value = "";
       }
       await loadBalance();
+      await loadPendingDeposits();
       await loadTransactionHistory();
       return;
     }
 
-    window.notify?.(verification?.message || "Transação enviada. Aguarde a confirmação da rede.", "info");
+    window.notify?.(verification?.message || "Transação registrada. O crédito será automático após confirmação.", "info");
+    await loadPendingDeposits();
   } catch (error) {
     console.error("Error processing extension deposit:", error);
     if (error?.code === 4001) {
@@ -380,11 +478,16 @@ async function handleVerifyDeposit(event) {
     const data = await response.json();
     
     if (data.ok) {
-      window.notify?.(data.message, "success");
+      const isPending = data.status === "pending";
+      window.notify?.(
+        data.message || (isPending ? "Depósito registrado e aguardando confirmação." : "Depósito confirmado."),
+        isPending ? "info" : "success"
+      );
       elements.verifyTxHash.value = "";
       
       // Refresh balance
       await loadBalance();
+      await loadPendingDeposits();
       
       // Refresh transaction history
       await loadTransactionHistory();
@@ -640,6 +743,14 @@ function setupEventListeners() {
     elements.withdrawForm.addEventListener("submit", handleWithdraw);
   }
 
+  if (elements.extensionDepositForm) {
+    elements.extensionDepositForm.addEventListener("submit", handleExtensionDeposit);
+  }
+
+  if (elements.verifyDepositForm) {
+    elements.verifyDepositForm.addEventListener("submit", handleVerifyDeposit);
+  }
+
   walletListenersAttached = true;
 
   // Listen for wallet account changes
@@ -663,6 +774,8 @@ async function init() {
 
   setupEventListeners();
   await loadBalance();
+  await loadDepositAddress();
+  await loadPendingDeposits();
   await loadTransactionHistory();
   
   updateWithdrawSummary();
@@ -673,6 +786,7 @@ async function init() {
 
   balanceAutoRefreshTimer = setInterval(() => {
     loadBalance();
+    loadPendingDeposits();
   }, 15000);
 }
 

@@ -81,12 +81,66 @@
     <!-- Deposit Section -->
     <section class="card deposit-card">
       <h2>💰 Deposit POL to Your Account</h2>
-      <p>Deposits are temporarily disabled.</p>
+      <p>Send POL to the deposit smart contract. Your balance is credited automatically after confirmation, even if you leave this page.</p>
       
       <div class="deposit-methods">
         <div class="deposit-method" id="directDepositSection">
-          <h3>⏳ Deposits will be enabled soon</h3>
-          <p>We are preparing a safer and smoother deposit experience. Please check back soon.</p>
+          <h3>🔗 Deposit via Connected Wallet</h3>
+          <p>Use the same connected wallet address to ensure automatic account matching.</p>
+
+          <div class="form-group">
+            <label for="depositAddressInput">Deposit Smart Contract Address</label>
+            <input type="text" id="depositAddressInput" class="form-control" readonly value="Loading..." />
+          </div>
+
+          <form id="extensionDepositForm" class="deposit-form">
+            <div class="form-group">
+              <label for="depositExtensionAmount">Amount to Deposit (POL)</label>
+              <input
+                type="text"
+                id="depositExtensionAmount"
+                class="form-control"
+                placeholder="0.000000"
+                inputmode="decimal"
+                autocomplete="off"
+                required
+              />
+              <small class="form-hint">Minimum: 0.01 POL</small>
+            </div>
+
+            <button type="submit" id="depositExtensionBtn" class="btn btn-primary btn-block">
+              <i class="bi bi-wallet2"></i> Deposit POL
+            </button>
+          </form>
+
+          <form id="verifyDepositForm" class="deposit-form">
+            <div class="form-group">
+              <label for="verifyTxHash">Verify Deposit by Tx Hash</label>
+              <input
+                type="text"
+                id="verifyTxHash"
+                class="form-control"
+                placeholder="0x..."
+                autocomplete="off"
+                required
+              />
+              <small class="form-hint">Use this if you sent POL from another wallet app.</small>
+            </div>
+
+            <button type="submit" id="verifyDepositBtn" class="btn btn-secondary btn-block">
+              <i class="bi bi-search"></i> Verify and Credit Deposit
+            </button>
+          </form>
+
+          <div class="pending-deposits">
+            <h3>⏳ Pending Deposits</h3>
+            <div id="pendingDepositsList" class="pending-list">
+              <div class="history-empty">
+                <i class="bi bi-hourglass-split"></i>
+                <p>No pending deposits</p>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     </section>

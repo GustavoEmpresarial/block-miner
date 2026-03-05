@@ -465,6 +465,7 @@ async function initializeDatabase() {
       hash_rate REAL NOT NULL,
       played_at INTEGER NOT NULL,
       expires_at INTEGER NOT NULL,
+      is_expired INTEGER NOT NULL DEFAULT 0,
       checkin_id INTEGER,
       FOREIGN KEY (user_id) REFERENCES users(id),
       FOREIGN KEY (game_id) REFERENCES games(id),
@@ -487,6 +488,7 @@ async function initializeDatabase() {
       hash_rate REAL NOT NULL,
       claimed_at INTEGER NOT NULL,
       expires_at INTEGER NOT NULL,
+      is_expired INTEGER NOT NULL DEFAULT 0,
       source_video_id TEXT,
       FOREIGN KEY (user_id) REFERENCES users(id)
     )
@@ -935,6 +937,41 @@ async function initializeDatabase() {
     // Column already exists
   }
 
+  // Keep temporary game/youtube power history and mark expired rows logically.
+  try {
+    await run("ALTER TABLE users_powers_games ADD COLUMN is_expired INTEGER NOT NULL DEFAULT 0");
+  } catch {
+    // Column already exists
+  }
+
+  await run(
+    "CREATE INDEX IF NOT EXISTS idx_users_powers_games_is_expired ON users_powers_games(is_expired)"
+  );
+
+  try {
+    await run("ALTER TABLE youtube_watch_user_powers ADD COLUMN is_expired INTEGER NOT NULL DEFAULT 0");
+  } catch {
+    // Column already exists
+  }
+
+  await run(
+    "CREATE INDEX IF NOT EXISTS idx_youtube_watch_user_powers_is_expired ON youtube_watch_user_powers(is_expired)"
+  );
+
+  const nowTs = Date.now();
+  const cutoff7dTs = nowTs - 7 * 24 * 60 * 60 * 1000;
+  const cutoff24hTs = nowTs - 24 * 60 * 60 * 1000;
+
+  await run(
+    "UPDATE users_powers_games SET is_expired = 1 WHERE is_expired = 0 AND (expires_at <= ? OR played_at <= ?)",
+    [nowTs, cutoff7dTs]
+  );
+  await run(
+    "UPDATE youtube_watch_user_powers SET is_expired = 1 WHERE is_expired = 0 AND (expires_at <= ? OR claimed_at <= ?)",
+    [nowTs, cutoff24hTs]
+  );
+  await run("UPDATE youtube_watch_power_history SET status = 'expired' WHERE status = 'granted' AND expires_at <= ?", [nowTs]);
+
   // Auto Mining Rewards table - configuração das GPUs para auto mining
   await run(`
     CREATE TABLE IF NOT EXISTS auto_mining_rewards (
@@ -1100,6 +1137,42 @@ async function initializeDatabase() {
   await run(`
     CREATE INDEX IF NOT EXISTS idx_mining_rewards_log_created_at ON mining_rewards_log(created_at)
   `);
+
+  await run(`
+    CREATE TABLE IF NOT EXISTS dashboard_updates (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      version TEXT NOT NULL UNIQUE,
+      title TEXT NOT NULL,
+      description TEXT NOT NULL,
+      is_active INTEGER NOT NULL DEFAULT 1,
+      starts_at INTEGER,
+      ends_at INTEGER,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL
+    )
+  `);
+
+  await run(`
+    CREATE INDEX IF NOT EXISTS idx_dashboard_updates_active_dates
+    ON dashboard_updates(is_active, starts_at, created_at)
+  `);
+
+  const hasDashboardUpdates = await get("SELECT id FROM dashboard_updates LIMIT 1");
+  if (!hasDashboardUpdates) {
+    const now = Date.now();
+    await run(
+      `INSERT INTO dashboard_updates (version, title, description, is_active, starts_at, ends_at, created_at, updated_at)
+       VALUES (?, ?, ?, 1, ?, NULL, ?, ?)` ,
+      [
+        "2026.03.04",
+        "Latest Updates",
+        "Welcome to the new BlockMiner dashboard updates popup.\n- Security and stability improvements\n- RPC and logging refactors\n- Financial safeguards and test coverage",
+        now,
+        now,
+        now
+      ]
+    );
+  }
 
   await run(`
     CREATE TABLE IF NOT EXISTS shortlink_completions (

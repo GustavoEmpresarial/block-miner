@@ -4,6 +4,7 @@
   --layout-scale: 0.72;
   --layout-nav-h: calc(68px * var(--layout-scale));
   --layout-side-w: calc(300px * var(--layout-scale));
+  --maintenance-h: calc(36px * var(--layout-scale));
 }
 
 @media (max-width: 900px) {
@@ -39,9 +40,10 @@ body {
 }
 
 
-body.with-layout {
+body.with-layout,
+body:has(#layoutInclude) {
   margin: 0;
-  padding-top: var(--layout-nav-h);
+  padding-top: calc(var(--layout-nav-h) + var(--maintenance-h));
   min-height: 100vh;
   overflow-x: hidden;
   font-size: calc(14px * var(--layout-scale));
@@ -49,7 +51,8 @@ body.with-layout {
   color: #eaf1ff;
 }
 
-body.with-layout main {
+body.with-layout main,
+body:has(#layoutInclude) main {
   margin-left: var(--layout-side-w);
   width: calc(100% - var(--layout-side-w));
   padding: 1.1rem 1.3rem 2rem;
@@ -167,7 +170,7 @@ body.with-layout main {
 
 .global-sidebar {
   position: fixed;
-  top: var(--layout-nav-h);
+  top: calc(var(--layout-nav-h) + var(--maintenance-h));
   left: 0;
   bottom: 0;
   width: var(--layout-side-w);
@@ -176,6 +179,24 @@ body.with-layout main {
   padding: 1.2rem 1rem;
   z-index: 1050;
   overflow-y: auto;
+}
+
+.maintenance-notice {
+  position: fixed;
+  top: var(--layout-nav-h);
+  left: 0;
+  right: 0;
+  height: var(--maintenance-h);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.35rem 0.8rem;
+  background: #facc15;
+  color: #2b2100;
+  font-weight: 700;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.15);
+  z-index: 1090;
+  text-align: center;
 }
 
 .sidebar-overlay {

@@ -355,6 +355,9 @@ async function deductBalance(userId, amount) {
 // Create a deposit transaction
 async function createDeposit(userId, amount, txHash, fromAddress, toAddress) {
   const now = Date.now();
+  const safeFromAddress = String(fromAddress || "pending").trim() || "pending";
+  const safeToAddress = String(toAddress || "pending").trim() || "pending";
+  const normalizedHash = String(txHash || "").trim().toLowerCase();
   
   const depositQuery = `
     INSERT INTO deposits (user_id, amount, tx_hash, from_address, to_address, status, created_at, updated_at)
@@ -367,14 +370,14 @@ async function createDeposit(userId, amount, txHash, fromAddress, toAddress) {
   `;
 
   const depositId = await new Promise((resolve, reject) => {
-    db.run(depositQuery, [userId, amount, txHash, fromAddress, toAddress, now, now], function(err) {
+    db.run(depositQuery, [userId, amount, normalizedHash, safeFromAddress, safeToAddress, now, now], function(err) {
       if (err) reject(err);
       else resolve(this.lastID);
     });
   });
 
   await new Promise((resolve, reject) => {
-    db.run(transactionQuery, [userId, amount, txHash, fromAddress, toAddress, now, now], function(err) {
+    db.run(transactionQuery, [userId, amount, normalizedHash, safeFromAddress, safeToAddress, now, now], function(err) {
       if (err) reject(err);
       else resolve({ changes: this.changes });
     });
@@ -481,6 +484,117 @@ async function getPendingDeposits(userId) {
   });
 }
 
+async function getDepositByTxHash(txHash) {
+  if (!txHash) {
+    return null;
+  }
+
+  const normalizedHash = String(txHash).trim().toLowerCase();
+  return get("SELECT * FROM deposits WHERE tx_hash = ? LIMIT 1", [normalizedHash]);
+}
+
+async function findUserIdByWalletAddress(address) {
+  const normalized = String(address || "").trim().toLowerCase();
+  if (!normalized) {
+    return null;
+  }
+
+  const walletMatch = await get(
+    "SELECT user_id FROM users_wallets WHERE LOWER(wallet_address) = ? LIMIT 1",
+    [normalized]
+  );
+  if (walletMatch?.user_id) {
+    return Number(walletMatch.user_id);
+  }
+
+  const tempPowerMatch = await get(
+    "SELECT user_id FROM users_temp_power WHERE LOWER(wallet_address) = ? LIMIT 1",
+    [normalized]
+  );
+  if (tempPowerMatch?.user_id) {
+    return Number(tempPowerMatch.user_id);
+  }
+
+  return null;
+}
+
+async function finalizeDepositByTxHash(txHash, actualAmount = null) {
+  const now = Date.now();
+  const normalizedHash = String(txHash || "").trim().toLowerCase();
+  const safeAmount = Number(actualAmount);
+
+  if (!normalizedHash) {
+    return { ok: false, reason: "missing_tx_hash" };
+  }
+
+  if (!Number.isFinite(safeAmount) || safeAmount <= 0) {
+    return { ok: false, reason: "invalid_amount" };
+  }
+
+  await run("BEGIN IMMEDIATE");
+  try {
+    const deposit = await get(
+      "SELECT id, user_id, amount, status FROM deposits WHERE tx_hash = ? LIMIT 1",
+      [normalizedHash]
+    );
+
+    if (!deposit) {
+      await run("COMMIT");
+      return { ok: false, reason: "deposit_not_found" };
+    }
+
+    if (deposit.status === "completed") {
+      await run("COMMIT");
+      return {
+        ok: true,
+        alreadyProcessed: true,
+        depositId: Number(deposit.id),
+        userId: Number(deposit.user_id),
+        amount: Number(deposit.amount || safeAmount)
+      };
+    }
+
+    if (deposit.status === "invalid") {
+      await run("COMMIT");
+      return { ok: false, reason: "deposit_invalid" };
+    }
+
+    await run(
+      "UPDATE deposits SET status = 'completed', amount = ?, confirmed_at = ?, updated_at = ? WHERE id = ?",
+      [safeAmount, now, now, deposit.id]
+    );
+
+    await run(
+      "UPDATE transactions SET status = 'completed', amount = ?, completed_at = ?, updated_at = ? WHERE tx_hash = ? AND type = 'deposit'",
+      [safeAmount, now, now, normalizedHash]
+    );
+
+    await run(
+      "UPDATE users_temp_power SET balance = balance + ?, lifetime_mined = lifetime_mined + ?, updated_at = ? WHERE user_id = ?",
+      [safeAmount, safeAmount, now, deposit.user_id]
+    );
+    await run("UPDATE users SET pol_balance = pol_balance + ? WHERE id = ?", [safeAmount, deposit.user_id]);
+    applyUserBalanceDelta(Number(deposit.user_id), safeAmount);
+
+    await run("COMMIT");
+
+    return {
+      ok: true,
+      alreadyProcessed: false,
+      depositId: Number(deposit.id),
+      userId: Number(deposit.user_id),
+      amount: safeAmount
+    };
+  } catch (error) {
+    try {
+      await run("ROLLBACK");
+    } catch {
+      // ignore
+    }
+    throw error;
+  }
+}
+
 module.exports = {
   getUserBalance,
   getWallet: getUserBalance, // Alias for compatibility
@@ -499,5 +613,8 @@ module.exports = {
   updateDepositStatus,
   creditBalance,
   getTransactionByHash,
-  getPendingDeposits
+  getPendingDeposits,
+  getDepositByTxHash,
+  findUserIdByWalletAddress,
+  finalizeDepositByTxHash
 };

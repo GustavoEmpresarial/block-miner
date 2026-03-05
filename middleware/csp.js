@@ -40,10 +40,20 @@ function baseDirectives({ allowWebSockets }) {
     fontSrc: ["'self'", "https://cdn.jsdelivr.net", "data:"],
 
     // Keep compatibility with current HTML (inline styles) and CDN scripts.
-    scriptSrc: ["'self'", "'unsafe-inline'", "https://cdn.jsdelivr.net", "https://webtrafic.ru", "https://*.webtrafic.ru"],
+    scriptSrc: [
+      "'self'",
+      "'unsafe-inline'",
+      "https://cdn.jsdelivr.net",
+      "https://webtrafic.ru",
+      "https://*.webtrafic.ru",
+      "https://www.googletagmanager.com",
+      "https://static.surfe.pro"
+    ],
     styleSrc: ["'self'", "'unsafe-inline'", "https://cdn.jsdelivr.net"],
 
-    connectSrc: allowWebSockets ? ["'self'", "https:", "ws:", "wss:"] : ["'self'", "https:"],
+    connectSrc: allowWebSockets
+      ? ["'self'", "https:", "ws:", "wss:", "https://static.surfe.pro"]
+      : ["'self'", "https:", "https://static.surfe.pro"],
     upgradeInsecureRequests: []
   };
 }

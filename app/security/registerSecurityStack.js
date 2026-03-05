@@ -14,6 +14,8 @@ function registerSecurityStack({
   isDirectApiNavigationRequest,
   env
 }) {
+  const { createRequestGuard } = require("../../middleware/requestGuard");
+
   app.use(cors(corsPolicy.expressCorsOptions));
 
   app.use(
@@ -66,6 +68,8 @@ function registerSecurityStack({
       parameterLimit: 30
     })
   );
+
+  app.use(createRequestGuard());
 
   app.use(createCspMiddleware());
   app.use(createCsrfMiddleware());

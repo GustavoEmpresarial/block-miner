@@ -1,4 +1,12 @@
 (function initLayout() {
+  if (!document.querySelector('script[data-bm-antiadblock="1"]')) {
+    const antiAdblockScript = document.createElement("script");
+    antiAdblockScript.src = "/js/antiadblock.js";
+    antiAdblockScript.async = true;
+    antiAdblockScript.setAttribute("data-bm-antiadblock", "1");
+    (document.head || document.documentElement).appendChild(antiAdblockScript);
+  }
+
   const getCookie = (name) => {
     const cookieString = document.cookie || "";
     const parts = cookieString.split(";").map((part) => part.trim());
@@ -85,159 +93,234 @@
     return;
   }
 
-  fetch("/includes/internal-navbar.html")
-    .then((response) => response.text())
-    .then((html) => {
-      includeTarget.innerHTML = html;
-      document.body.classList.add("with-layout");
+  document.body.classList.add("with-layout");
 
-      const logoutBtn = document.getElementById("navLogoutBtn");
-      const logoutBtnSide = document.getElementById("navLogoutBtnSide");
-      const menuBtn = document.getElementById("navMenuBtn");
-      const sidebar = document.getElementById("globalSidebar");
-      const sideLinks = [...document.querySelectorAll(".side-links a")];
-      const sectionToggles = [...document.querySelectorAll("[data-section-toggle]")];
+  const LAYOUT_CACHE_KEY = "bm_layout_internal_navbar_v2";
+  const LEGACY_LAYOUT_CACHE_KEYS = ["bm_layout_internal_navbar_v1"];
+  const LAYOUT_CACHE_MAX_AGE_MS = 15 * 60 * 1000;
 
-      let overlay = document.querySelector(".sidebar-overlay");
-      if (!overlay) {
-        overlay = document.createElement("div");
-        overlay.className = "sidebar-overlay";
-        document.body.appendChild(overlay);
+  for (const legacyKey of LEGACY_LAYOUT_CACHE_KEYS) {
+    try {
+      sessionStorage.removeItem(legacyKey);
+    } catch {
+      // ignore cache cleanup failures
+    }
+  }
+
+  const readCachedLayout = () => {
+    try {
+      const raw = sessionStorage.getItem(LAYOUT_CACHE_KEY);
+      if (!raw) return null;
+
+      const parsed = JSON.parse(raw);
+      if (!parsed?.html || !parsed?.savedAt) return null;
+
+      const age = Date.now() - Number(parsed.savedAt || 0);
+      if (!Number.isFinite(age) || age > LAYOUT_CACHE_MAX_AGE_MS) {
+        sessionStorage.removeItem(LAYOUT_CACHE_KEY);
+        return null;
       }
 
-      const currentPath = window.location.pathname;
-      sideLinks.forEach((link) => {
-        const href = link.getAttribute("href");
-        if (href === currentPath) {
-          link.classList.add("active");
-        }
-      });
+      return String(parsed.html);
+    } catch {
+      return null;
+    }
+  };
 
-      const setSectionOpen = (sectionId, isOpen) => {
-        const section = document.querySelector(`[data-section="${sectionId}"]`);
-        const toggle = document.querySelector(`[data-section-toggle="${sectionId}"]`);
-        if (!section || !toggle) {
-          return;
-        }
+  const writeCachedLayout = (html) => {
+    try {
+      sessionStorage.setItem(
+        LAYOUT_CACHE_KEY,
+        JSON.stringify({
+          html,
+          savedAt: Date.now()
+        })
+      );
+    } catch {
+      // ignore cache failures
+    }
+  };
 
-        section.classList.toggle("open", isOpen);
-        toggle.setAttribute("aria-expanded", String(isOpen));
-      };
+  const renderAuth = (loggedIn) => {
+    const logoutBtn = document.getElementById("navLogoutBtn");
+    const logoutBtnSide = document.getElementById("navLogoutBtnSide");
 
-      sectionToggles.forEach((toggle) => {
-        const sectionId = toggle.dataset.sectionToggle;
-        const panel = document.querySelector(`[data-section-panel="${sectionId}"]`);
-        const hasActiveLink = panel
-          ? [...panel.querySelectorAll("a")].some((link) => link.getAttribute("href") === currentPath)
-          : false;
+    if (logoutBtn) {
+      logoutBtn.style.display = loggedIn ? "inline-flex" : "none";
+    }
+    if (logoutBtnSide) {
+      logoutBtnSide.style.display = loggedIn ? "inline-flex" : "none";
+    }
 
-        setSectionOpen(sectionId, hasActiveLink);
+    if (!loggedIn && window.location.pathname === "/dashboard") {
+      window.location.href = "/login";
+    }
+  };
 
-        toggle.addEventListener("click", () => {
-          const section = document.querySelector(`[data-section="${sectionId}"]`);
-          const isOpen = section?.classList.contains("open");
-          setSectionOpen(sectionId, !isOpen);
+  const validateSession = async () => {
+    const attemptRefresh = async () => {
+      try {
+        const refreshResponse = await fetch("/api/auth/refresh", {
+          method: "POST",
+          credentials: "include"
         });
-      });
-
-      const renderAuth = (loggedIn) => {
-        if (logoutBtn) {
-          logoutBtn.style.display = loggedIn ? "inline-flex" : "none";
+        const refreshPayload = await refreshResponse.json();
+        if (!refreshResponse.ok || !refreshPayload?.ok) {
+          return false;
         }
-        if (logoutBtnSide) {
-          logoutBtnSide.style.display = loggedIn ? "inline-flex" : "none";
-        }
+        return true;
+      } catch {
+        return false;
+      }
+    };
 
-        if (!loggedIn && window.location.pathname === "/dashboard") {
-          window.location.href = "/login";
-        }
-      };
+    try {
+      let response = await fetch("/api/auth/session");
 
-      const validateSession = async () => {
-        const attemptRefresh = async () => {
-          try {
-            const refreshResponse = await fetch("/api/auth/refresh", {
-              method: "POST",
-              credentials: "include"
-            });
-            const refreshPayload = await refreshResponse.json();
-            if (!refreshResponse.ok || !refreshPayload?.ok) {
-              return false;
-            }
-            return true;
-          } catch {
-            return false;
-          }
-        };
-
-        try {
-          let response = await fetch("/api/auth/session");
-
-          if (!response.ok) {
-            const refreshed = await attemptRefresh();
-            if (!refreshed) {
-              localStorage.removeItem("blockminer_session");
-              return false;
-            }
-
-            response = await fetch("/api/auth/session");
-          }
-
-          const payload = await response.json();
-          if (!response.ok || !payload?.ok) {
-            localStorage.removeItem("blockminer_session");
-            return false;
-          }
-
-          localStorage.setItem(
-            "blockminer_session",
-            JSON.stringify({
-              name: payload.user.name,
-              email: payload.user.email
-            })
-          );
-          return true;
-        } catch {
+      if (!response.ok) {
+        const refreshed = await attemptRefresh();
+        if (!refreshed) {
           localStorage.removeItem("blockminer_session");
           return false;
         }
-      };
 
-      const handleLogout = () => {
-        fetch("/api/auth/logout", {
-          method: "POST"
-        }).catch(() => undefined).finally(() => {
-          localStorage.removeItem("blockminer_session");
-          renderAuth(false);
-          window.location.href = "/login";
-        });
-      };
+        response = await fetch("/api/auth/session");
+      }
 
-      logoutBtn?.addEventListener("click", handleLogout);
-      logoutBtnSide?.addEventListener("click", handleLogout);
+      const payload = await response.json();
+      if (!response.ok || !payload?.ok) {
+        localStorage.removeItem("blockminer_session");
+        return false;
+      }
 
-      const closeSidebar = () => {
-        sidebar?.classList.remove("active");
-        overlay?.classList.remove("active");
-      };
+      localStorage.setItem(
+        "blockminer_session",
+        JSON.stringify({
+          name: payload.user.name,
+          email: payload.user.email
+        })
+      );
+      return true;
+    } catch {
+      localStorage.removeItem("blockminer_session");
+      return false;
+    }
+  };
 
-      const openSidebar = () => {
-        sidebar?.classList.add("active");
-        overlay?.classList.add("active");
-      };
+  const setupLayoutInteractions = () => {
+    const logoutBtn = document.getElementById("navLogoutBtn");
+    const logoutBtnSide = document.getElementById("navLogoutBtnSide");
+    const menuBtn = document.getElementById("navMenuBtn");
+    const sidebar = document.getElementById("globalSidebar");
+    const sideLinks = [...document.querySelectorAll(".side-links a")];
+    const sectionToggles = [...document.querySelectorAll("[data-section-toggle]")];
 
-      menuBtn?.addEventListener("click", () => {
-        if (sidebar?.classList.contains("active")) {
-          closeSidebar();
-        } else {
-          openSidebar();
-        }
+    let overlay = document.querySelector(".sidebar-overlay");
+    if (!overlay) {
+      overlay = document.createElement("div");
+      overlay.className = "sidebar-overlay";
+      document.body.appendChild(overlay);
+    }
+
+    const currentPath = window.location.pathname;
+    sideLinks.forEach((link) => {
+      const href = link.getAttribute("href");
+      if (href === currentPath) {
+        link.classList.add("active");
+      }
+    });
+
+    const setSectionOpen = (sectionId, isOpen) => {
+      const section = document.querySelector(`[data-section="${sectionId}"]`);
+      const toggle = document.querySelector(`[data-section-toggle="${sectionId}"]`);
+      if (!section || !toggle) {
+        return;
+      }
+
+      section.classList.toggle("open", isOpen);
+      toggle.setAttribute("aria-expanded", String(isOpen));
+    };
+
+    sectionToggles.forEach((toggle) => {
+      const sectionId = toggle.dataset.sectionToggle;
+      const panel = document.querySelector(`[data-section-panel="${sectionId}"]`);
+      const hasActiveLink = panel
+        ? [...panel.querySelectorAll("a")].some((link) => link.getAttribute("href") === currentPath)
+        : false;
+
+      setSectionOpen(sectionId, hasActiveLink);
+
+      toggle.addEventListener("click", () => {
+        const section = document.querySelector(`[data-section="${sectionId}"]`);
+        const isOpen = section?.classList.contains("open");
+        setSectionOpen(sectionId, !isOpen);
       });
+    });
 
-      overlay?.addEventListener("click", closeSidebar);
-      sideLinks.forEach((link) => link.addEventListener("click", closeSidebar));
+    const handleLogout = () => {
+      fetch("/api/auth/logout", {
+        method: "POST"
+      }).catch(() => undefined).finally(() => {
+        localStorage.removeItem("blockminer_session");
+        renderAuth(false);
+        window.location.href = "/login";
+      });
+    };
 
-      validateSession().then((loggedIn) => renderAuth(loggedIn));
+    logoutBtn?.addEventListener("click", handleLogout);
+    logoutBtnSide?.addEventListener("click", handleLogout);
+
+    const closeSidebar = () => {
+      sidebar?.classList.remove("active");
+      overlay?.classList.remove("active");
+    };
+
+    const openSidebar = () => {
+      sidebar?.classList.add("active");
+      overlay?.classList.add("active");
+    };
+
+    menuBtn?.addEventListener("click", () => {
+      if (sidebar?.classList.contains("active")) {
+        closeSidebar();
+      } else {
+        openSidebar();
+      }
+    });
+
+    if (!overlay.dataset.layoutBound) {
+      overlay.addEventListener("click", closeSidebar);
+      overlay.dataset.layoutBound = "1";
+    }
+
+    sideLinks.forEach((link) => link.addEventListener("click", closeSidebar));
+
+    validateSession().then((loggedIn) => renderAuth(loggedIn));
+  };
+
+  const mountLayout = (html) => {
+    const normalizedHtml = String(html || "").trim();
+    if (!normalizedHtml) return;
+    if (includeTarget.innerHTML.trim() === normalizedHtml) return;
+
+    includeTarget.innerHTML = normalizedHtml;
+    setupLayoutInteractions();
+  };
+
+  const cachedHtml = readCachedLayout();
+  if (cachedHtml) {
+    mountLayout(cachedHtml);
+  }
+
+  fetch("/includes/internal-navbar.html")
+    .then((response) => response.text())
+    .then((html) => {
+      writeCachedLayout(html);
+      mountLayout(html);
     })
-    .catch(() => undefined);
+    .catch(() => {
+      if (!cachedHtml) {
+        includeTarget.innerHTML = "";
+      }
+    });
 })();

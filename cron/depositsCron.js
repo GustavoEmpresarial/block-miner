@@ -1,6 +1,5 @@
 const { ethers } = require("ethers");
 const walletModel = require("../models/walletModel");
-const { all } = require("../src/db/sqlite");
 const logger = require("../utils/logger").child("DepositsCron");
 const { createCronActionRunner } = require("./cronActionRunner");
 const cron = require('node-cron');
@@ -20,6 +19,7 @@ const DEFAULT_RPC_URLS = [
 ];
 const RPC_URLS = Array.from(new Set([POLYGON_RPC_URL, ...DEFAULT_RPC_URLS]));
 const CHECKIN_RECEIVER = process.env.CHECKIN_RECEIVER || "0x95EA8E99063A3EF1B95302aA1C5bE199653EEb13";
+const DEPOSIT_CONTRACT_ADDRESS = String(process.env.DEPOSIT_CONTRACT_ADDRESS || CHECKIN_RECEIVER).trim();
 const WITHDRAWAL_PRIVATE_KEY = process.env.WITHDRAWAL_PRIVATE_KEY;
 const WITHDRAWAL_MNEMONIC = process.env.WITHDRAWAL_MNEMONIC;
 
@@ -49,9 +49,9 @@ function getHotWalletAddress() {
 
 // Get allowed deposit addresses
 function getAllowedDepositAddresses() {
-  const addresses = [CHECKIN_RECEIVER];
+  const addresses = [DEPOSIT_CONTRACT_ADDRESS];
   const hotWalletAddress = getHotWalletAddress();
-  if (hotWalletAddress && !isSameAddress(hotWalletAddress, CHECKIN_RECEIVER)) {
+  if (hotWalletAddress && !isSameAddress(hotWalletAddress, DEPOSIT_CONTRACT_ADDRESS)) {
     addresses.push(hotWalletAddress);
   }
   return addresses;
@@ -155,24 +155,26 @@ async function scanForNewDeposits() {
                     blockNumber: blockNum
                   });
                   
-                  // Determinar o usuário baseado no endereço de destino ou outros critérios
-                  // Por enquanto, vamos assumir que é o primeiro usuário (isso pode ser melhorado)
-                  const users = await all("SELECT id FROM users LIMIT 1");
-                  
-                  if (users.length > 0) {
-                    const userId = users[0].id;
-                    const amount = Number(ethers.formatEther(tx.value || 0));
-                    
-                    // Criar depósito pendente que será processado pelo cron principal
-                    await walletModel.createDeposit(userId, amount, tx.hash, tx.from, tx.to);
-                    newDepositsFound++;
-                    
-                    logger.info("Created pending deposit record", {
-                      userId,
-                      amount,
-                      txHash: tx.hash
+                  const userId = await walletModel.findUserIdByWalletAddress(tx.from);
+                  if (!userId) {
+                    logger.warn("Skipping deposit without linked wallet owner", {
+                      txHash: tx.hash,
+                      from: tx.from,
+                      to: tx.to
                     });
+                    continue;
                   }
+
+                  const amount = Number(Number(ethers.formatEther(tx.value || 0)).toFixed(6));
+
+                  await walletModel.createDeposit(userId, amount, tx.hash, tx.from, tx.to);
+                  newDepositsFound++;
+
+                  logger.info("Created pending deposit record", {
+                    userId,
+                    amount,
+                    txHash: tx.hash
+                  });
                 }
               }
             }
@@ -287,12 +289,17 @@ async function checkPendingDeposits() {
               return { status: "invalid", reason: "invalid_amount" };
             }
 
-            await walletModel.creditBalance(safeDeposit.user_id, actualAmount);
-            await walletModel.updateDepositStatus(safeDeposit.id, "completed", actualAmount);
-            return { status: "completed", amountPol: actualAmount };
+            const finalization = await walletModel.finalizeDepositByTxHash(safeDeposit.tx_hash, actualAmount);
+            if (!finalization.ok) {
+              return { status: "skipped", reason: finalization.reason || "finalization_failed" };
+            }
+            return {
+              status: finalization.alreadyProcessed ? "already_processed" : "completed",
+              amountPol: actualAmount
+            };
           },
           confirm: async ({ executionResult }) => {
-            if (executionResult?.status === "completed") {
+            if (executionResult?.status === "completed" || executionResult?.status === "already_processed") {
               return {
                 ok: true,
                 details: {
@@ -306,6 +313,14 @@ async function checkPendingDeposits() {
               return {
                 ok: false,
                 reason: executionResult.reason || "deposit_marked_invalid",
+                details: { status: executionResult.status }
+              };
+            }
+
+            if (executionResult?.status === "skipped") {
+              return {
+                ok: false,
+                reason: executionResult.reason || "deposit_skipped",
                 details: { status: executionResult.status }
               };
             }

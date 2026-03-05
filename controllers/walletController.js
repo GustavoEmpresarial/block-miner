@@ -4,8 +4,9 @@ const { createAuditLog } = require("../models/auditLogModel");
 const logger = require("../utils/logger").getLogger("WalletController");
 const { getAnonymizedRequestIp } = require("../utils/clientIp");
 const { allocateNonce, resetNonce } = require("../utils/nonceManager");
+const { DEFAULT_RPC_URLS, parseRpcUrls, buildRpcUrls, fetchWithTimeout, rpcCallWithFallback } = require("../utils/rpcClient");
 const config = require("../src/config");
-const { get, all } = require("../src/db/sqlite");
+const { all } = require("../src/db/sqlite");
 const ccpaymentService = require("../services/ccpaymentService");
 
 const POLYGON_CHAIN_ID = Number(process.env.POLYGON_CHAIN_ID || 137);
@@ -13,36 +14,19 @@ const POLYGON_RPC_URL = process.env.POLYGON_RPC_URL || "https://poly.api.pocket.
 const POLYGON_RPC_TIMEOUT_MS = Number(process.env.POLYGON_RPC_TIMEOUT_MS || 4500);
 const POLYGON_BROADCAST_RPC_URL = String(process.env.POLYGON_BROADCAST_RPC_URL || "").trim();
 const POLYGON_BROADCAST_RPC_URLS_RAW = String(process.env.POLYGON_BROADCAST_RPC_URLS || "").trim();
-const DEFAULT_RPC_URLS = [
-  "https://polygon-bor-rpc.publicnode.com",
-  "https://polygon.drpc.org",
-  "https://poly.api.pocket.network",
-  "https://1rpc.io/matic",
-  "https://polygon.blockpi.network/v1/rpc/public",
-  "https://polygon.meowrpc.com",
-  "https://polygon-mainnet.public.blastapi.io",
-  "https://rpc.ankr.com/polygon",
-  "https://rpc-mainnet.matic.network"
-];
-const RPC_URLS = Array.from(new Set([POLYGON_RPC_URL, ...DEFAULT_RPC_URLS]));
-const BROADCAST_RPC_URLS = (() => {
-  const urls = [];
-  if (POLYGON_BROADCAST_RPC_URLS_RAW) {
-    urls.push(
-      ...POLYGON_BROADCAST_RPC_URLS_RAW
-        .split(",")
-        .map((v) => v.trim())
-        .filter(Boolean)
-    );
-  }
-  if (POLYGON_BROADCAST_RPC_URL) {
-    urls.unshift(POLYGON_BROADCAST_RPC_URL);
-  }
-  return Array.from(new Set(urls.length > 0 ? urls : RPC_URLS));
-})();
+const RPC_URLS = buildRpcUrls({
+  primaryUrl: POLYGON_RPC_URL,
+  defaultUrls: DEFAULT_RPC_URLS
+});
+const BROADCAST_RPC_URLS = buildRpcUrls({
+  primaryUrl: POLYGON_BROADCAST_RPC_URL,
+  additionalUrls: parseRpcUrls(POLYGON_BROADCAST_RPC_URLS_RAW),
+  defaultUrls: RPC_URLS
+});
 const WITHDRAWAL_PRIVATE_KEY = process.env.WITHDRAWAL_PRIVATE_KEY;
 const WITHDRAWAL_MNEMONIC = process.env.WITHDRAWAL_MNEMONIC;
 const CHECKIN_RECEIVER = process.env.CHECKIN_RECEIVER || "0x95EA8E99063A3EF1B95302aA1C5bE199653EEb13";
+const DEPOSIT_CONTRACT_ADDRESS = String(process.env.DEPOSIT_CONTRACT_ADDRESS || CHECKIN_RECEIVER).trim();
 
 const MIN_WITHDRAWAL = Number(config.withdraw?.min || 10);
 const MAX_WITHDRAWAL = Number(config.withdraw?.max || 1_000_000);
@@ -100,6 +84,10 @@ function normalizeAmountInput(amountRaw) {
   }
 
   return amount;
+}
+
+function normalizeTxHash(txHash) {
+  return String(txHash || "").trim().toLowerCase();
 }
 
 async function verifyPolygonTransaction(txHash) {
@@ -330,7 +318,7 @@ async function isContractAddress(address) {
 
 function createProvider(rpcUrl) {
   const request = new ethers.FetchRequest(rpcUrl);
-  request.timeout = POLYGON_RPC_TIMEOUT_MS;
+  request.timeout = Number(process.env.POLYGON_RPC_TIMEOUT_MS || 4500);
   const provider = new ethers.JsonRpcProvider(request);
   // Avoid Polygon gas station rate limits by overriding fee data lookup.
   provider.getFeeData = async () => {
@@ -338,51 +326,6 @@ function createProvider(rpcUrl) {
     return new ethers.FeeData(gasPrice, null, null);
   };
   return provider;
-}
-
-async function fetchWithTimeout(url, init, timeoutMs) {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    return await fetch(url, { ...init, signal: controller.signal });
-  } finally {
-    clearTimeout(timeout);
-  }
-}
-
-async function rpcCallWithFallback(rpcUrls, method, params) {
-  let lastError = null;
-  const body = JSON.stringify({ jsonrpc: "2.0", id: 1, method, params });
-
-  for (const rpcUrl of rpcUrls) {
-    try {
-      const response = await fetchWithTimeout(
-        rpcUrl,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body
-        },
-        POLYGON_RPC_TIMEOUT_MS
-      );
-
-      if (!response.ok) {
-        throw new Error(`RPC request failed (HTTP ${response.status})`);
-      }
-
-      const payload = await response.json();
-      if (payload?.error) {
-        throw new Error(payload.error.message || "RPC error");
-      }
-
-      return payload.result;
-    } catch (error) {
-      lastError = new Error(`${rpcUrl}: ${error.message || String(error)}`);
-      continue;
-    }
-  }
-
-  throw lastError || new Error("RPC request failed");
 }
 
 async function fetchTransactionWithReceipt(txHash) {
@@ -624,7 +567,7 @@ async function getBalance(req, res) {
       walletAddress: balance.walletAddress
     });
   } catch (error) {
-    console.error("Error getting balance:", error);
+    logger.error("Error getting balance", { error: error?.message || String(error), stack: error?.stack });
     res.status(500).json({
       ok: false,
       message: "Failed to retrieve balance"
@@ -653,7 +596,7 @@ async function updateWalletAddress(req, res) {
       message: walletAddress ? "Wallet address saved successfully" : "Wallet address removed"
     });
   } catch (error) {
-    console.error("Error updating wallet address:", error);
+    logger.error("Error updating wallet address", { error: error?.message || String(error), stack: error?.stack });
     res.status(500).json({
       ok: false,
       message: "Failed to update wallet address"
@@ -701,7 +644,7 @@ async function withdraw(req, res) {
         details: { amount, address, status: "pending_approval" }
       });
     } catch (logError) {
-      console.error("Failed to write withdrawal audit log:", logError);
+      logger.error("Failed to write withdrawal audit log", { error: logError?.message || String(logError), stack: logError?.stack });
     }
 
     res.json({
@@ -714,13 +657,13 @@ async function withdraw(req, res) {
       }
     });
   } catch (error) {
-    console.error("Error processing withdrawal:", error);
+    logger.error("Error processing withdrawal", { error: error?.message || String(error), stack: error?.stack });
 
     if (transaction?.id) {
       try {
         await walletModel.updateTransactionStatus(transaction.id, "failed");
       } catch (statusError) {
-        console.error("Failed to mark withdrawal as failed:", statusError);
+        logger.error("Failed to mark withdrawal as failed", { error: statusError?.message || String(statusError), stack: statusError?.stack });
       }
     }
 
@@ -816,7 +759,7 @@ async function getTransactions(req, res) {
       transactions
     });
   } catch (error) {
-    console.error("Error getting transactions:", error);
+    logger.error("Error getting transactions", { error: error?.message || String(error), stack: error?.stack });
     res.status(500).json({
       ok: false,
       message: "Failed to retrieve transactions"
@@ -826,8 +769,7 @@ async function getTransactions(req, res) {
 
 async function getDepositAddress(req, res) {
   try {
-    // Use the main checkin receiver address as deposit address
-    const depositAddress = CHECKIN_RECEIVER;
+    const depositAddress = DEPOSIT_CONTRACT_ADDRESS;
 
     res.json({
       ok: true,
@@ -836,7 +778,8 @@ async function getDepositAddress(req, res) {
       network: "Polygon",
       chainId: POLYGON_CHAIN_ID,
       symbol: "POL",
-      instructions: "Send POL from Trust Wallet or any Web3 wallet to this address. Your balance will be credited automatically after network confirmation (usually 1-2 minutes)."
+      instructions: "Send POL from your connected wallet to this smart-contract deposit address. Credit is processed automatically after blockchain confirmation, even if you close the wallet page.",
+      isSmartContract: true
     });
   } catch (error) {
     logger.error("Failed to get deposit address", {
@@ -861,22 +804,26 @@ async function handleCcpaymentDepositWebhook(req, res) {
 async function verifyAndCreditDeposit(req, res) {
   try {
     const userId = req.user.id;
-    const { txHash, fromAddress } = req.body;
+    const { txHash, fromAddress, amount } = req.body;
+    const normalizedTxHash = normalizeTxHash(txHash);
 
-    if (!txHash || typeof txHash !== "string" || txHash.length < 20) {
+    if (!normalizedTxHash || normalizedTxHash.length < 20) {
       return res.status(400).json({
         ok: false,
         message: "Invalid transaction hash"
       });
     }
 
-    // Check if this transaction was already processed
-    const existingDeposit = await get(
-      "SELECT id, status, amount FROM deposits WHERE tx_hash = ? AND user_id = ?",
-      [txHash.toLowerCase(), userId]
-    );
+    const existingDeposit = await walletModel.getDepositByTxHash(normalizedTxHash);
 
     if (existingDeposit) {
+      if (Number(existingDeposit.user_id) !== Number(userId)) {
+        return res.status(409).json({
+          ok: false,
+          message: "This transaction hash is already linked to another account"
+        });
+      }
+
       if (existingDeposit.status === "completed") {
         return res.json({
           ok: true,
@@ -889,7 +836,8 @@ async function verifyAndCreditDeposit(req, res) {
         return res.json({
           ok: true,
           message: "This transaction is being processed. Please wait a few minutes.",
-          status: "pending"
+          status: "pending",
+          txHash: normalizedTxHash
         });
       }
     }
@@ -905,11 +853,33 @@ async function verifyAndCreditDeposit(req, res) {
     }
 
     // Validate transaction details
-    if (transactionData.to?.toLowerCase() !== CHECKIN_RECEIVER.toLowerCase()) {
+    if (transactionData.to?.toLowerCase() !== DEPOSIT_CONTRACT_ADDRESS.toLowerCase()) {
       return res.status(400).json({
         ok: false,
         message: "Transaction was not sent to the correct deposit address"
       });
+    }
+
+    const estimatedAmount = Number(transactionData.value || amount || 0);
+    const initialAmount = Number.isFinite(estimatedAmount) && estimatedAmount >= 0
+      ? Number(estimatedAmount.toFixed(6))
+      : 0;
+
+    if (!existingDeposit) {
+      try {
+        await walletModel.createDeposit(
+          userId,
+          initialAmount,
+          normalizedTxHash,
+          transactionData.from || fromAddress || "pending",
+          transactionData.to || DEPOSIT_CONTRACT_ADDRESS
+        );
+      } catch (createError) {
+        const message = String(createError?.message || "").toLowerCase();
+        if (!message.includes("unique") && !message.includes("constraint")) {
+          throw createError;
+        }
+      }
     }
 
     if (transactionData.pending) {
@@ -917,7 +887,7 @@ async function verifyAndCreditDeposit(req, res) {
         ok: true,
         status: "pending",
         message: "Transaction detected. Waiting for blockchain confirmation.",
-        txHash: txHash.toLowerCase()
+        txHash: normalizedTxHash
       });
     }
 
@@ -928,7 +898,7 @@ async function verifyAndCreditDeposit(req, res) {
       });
     }
 
-    const actualAmount = Number(transactionData.value || 0);
+    const actualAmount = Number(Number(transactionData.value || 0).toFixed(6));
     if (actualAmount <= 0) {
       return res.status(400).json({
         ok: false,
@@ -936,18 +906,13 @@ async function verifyAndCreditDeposit(req, res) {
       });
     }
 
-    // Create deposit record
-    const depositId = await walletModel.createDeposit(
-      userId,
-      actualAmount,
-      txHash.toLowerCase(),
-      transactionData.from || fromAddress,
-      transactionData.to
-    );
-
-    // Complete deposit and credit balance
-    await walletModel.updateDepositStatus(depositId, "completed", actualAmount);
-    await walletModel.creditBalance(userId, actualAmount);
+    const finalization = await walletModel.finalizeDepositByTxHash(normalizedTxHash, actualAmount);
+    if (!finalization.ok) {
+      return res.status(409).json({
+        ok: false,
+        message: "Unable to complete this deposit right now"
+      });
+    }
 
     // Log the deposit
     await createAuditLog({
@@ -956,9 +921,9 @@ async function verifyAndCreditDeposit(req, res) {
       ip: getAnonymizedRequestIp(req),
       userAgent: req.get("user-agent"),
       details: {
-        depositId,
+        depositId: finalization.depositId,
         amount: actualAmount,
-        txHash: txHash.toLowerCase(),
+        txHash: normalizedTxHash,
         fromAddress: transactionData.from,
         blockNumber: transactionData.blockNumber
       }
@@ -966,18 +931,21 @@ async function verifyAndCreditDeposit(req, res) {
 
     logger.info("POL deposit verified and credited", {
       userId,
-      depositId,
+      depositId: finalization.depositId,
       amount: actualAmount,
-      txHash: txHash.toLowerCase(),
+      txHash: normalizedTxHash,
       blockNumber: transactionData.blockNumber
     });
 
     res.json({
       ok: true,
-      message: "Deposit verified and credited successfully!",
+      message: finalization.alreadyProcessed
+        ? "This transaction has already been credited to your account"
+        : "Deposit verified and credited successfully!",
       amount: actualAmount,
-      txHash: txHash.toLowerCase(),
-      depositId
+      txHash: normalizedTxHash,
+      depositId: finalization.depositId,
+      alreadyProcessed: Boolean(finalization.alreadyProcessed)
     });
 
   } catch (error) {
