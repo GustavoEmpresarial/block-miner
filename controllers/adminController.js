@@ -2,6 +2,7 @@ const minersModel = require("../models/minersModel");
 const { get, all, run } = require("../models/db");
 const { createAuditLog } = require("../models/auditLogModel");
 const { getAnonymizedRequestIp } = require("../utils/clientIp");
+const { applyUserBalanceDelta } = require("../src/runtime/miningRuntime");
 const os = require("os");
 const path = require("path");
 const fs = require("fs/promises");
@@ -704,12 +705,35 @@ function createAdminController() {
       try {
         await run(
           `
-            UPDATE users_temp_power
-            SET balance = COALESCE(balance, 0) + ?,
-                lifetime_mined = COALESCE(lifetime_mined, 0) + ?
-            WHERE user_id = ?
+            INSERT INTO users_temp_power (
+              user_id,
+              username,
+              wallet_address,
+              rigs,
+              base_hash_rate,
+              balance,
+              lifetime_mined,
+              created_at,
+              updated_at
+            )
+            SELECT
+              u.id,
+              COALESCE(NULLIF(TRIM(u.username), ''), NULLIF(TRIM(u.name), ''), 'user-' || u.id),
+              NULL,
+              1,
+              0,
+              ?,
+              ?,
+              ?,
+              ?
+            FROM users u
+            WHERE u.id = ?
+            ON CONFLICT(user_id) DO UPDATE SET
+              balance = COALESCE(users_temp_power.balance, 0) + excluded.balance,
+              lifetime_mined = COALESCE(users_temp_power.lifetime_mined, 0) + excluded.lifetime_mined,
+              updated_at = excluded.updated_at
           `,
-          [normalizedAmount, normalizedAmount, userId]
+          [normalizedAmount, normalizedAmount, now, now, userId]
         );
 
         await run(
@@ -766,6 +790,9 @@ function createAdminController() {
         "SELECT COALESCE(balance, 0) AS balance FROM users_temp_power WHERE user_id = ?",
         [userId]
       );
+
+      // Keep in-memory runtime state aligned so periodic sync doesn't revert manual credits.
+      applyUserBalanceDelta(userId, normalizedAmount);
 
       res.json({
         ok: true,
