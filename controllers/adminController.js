@@ -1,5 +1,7 @@
 const minersModel = require("../models/minersModel");
 const { get, all, run } = require("../models/db");
+const { createAuditLog } = require("../models/auditLogModel");
+const { getAnonymizedRequestIp } = require("../utils/clientIp");
 const os = require("os");
 const path = require("path");
 const fs = require("fs/promises");
@@ -654,6 +656,134 @@ function createAdminController() {
     }
   }
 
+  async function creditUserBalanceManually(req, res) {
+    try {
+      const userId = Number(req.body?.userId);
+      const amount = Number(req.body?.amount);
+      const reason = toTrimmedString(req.body?.reason);
+      const txHashInput = toTrimmedString(req.body?.txHash);
+      const txHash = txHashInput || null;
+
+      if (!Number.isInteger(userId) || userId <= 0) {
+        res.status(400).json({ ok: false, message: "Invalid user id." });
+        return;
+      }
+
+      if (!Number.isFinite(amount) || amount <= 0) {
+        res.status(400).json({ ok: false, message: "Amount must be greater than zero." });
+        return;
+      }
+
+      if (amount > 1_000_000) {
+        res.status(400).json({ ok: false, message: "Amount exceeds maximum allowed value." });
+        return;
+      }
+
+      if (!reason || reason.length < 5 || reason.length > 240) {
+        res.status(400).json({ ok: false, message: "Reason must be between 5 and 240 characters." });
+        return;
+      }
+
+      if (txHash && !/^0x[a-fA-F0-9]{64}$/.test(txHash)) {
+        res.status(400).json({ ok: false, message: "txHash must be a valid 0x hash." });
+        return;
+      }
+
+      const user = await get("SELECT id, email, username, name FROM users WHERE id = ?", [userId]);
+      if (!user) {
+        res.status(404).json({ ok: false, message: "User not found." });
+        return;
+      }
+
+      const now = Date.now();
+      const normalizedAmount = Number(amount.toFixed(6));
+      const adminId = Number(req.admin?.id || 0) || null;
+      const sourceLabel = `manual_credit_admin:${adminId || "unknown"}`;
+
+      await run("BEGIN TRANSACTION");
+      try {
+        await run(
+          `
+            UPDATE users_temp_power
+            SET balance = COALESCE(balance, 0) + ?,
+                lifetime_mined = COALESCE(lifetime_mined, 0) + ?
+            WHERE user_id = ?
+          `,
+          [normalizedAmount, normalizedAmount, userId]
+        );
+
+        await run(
+          "UPDATE users SET pol_balance = COALESCE(pol_balance, 0) + ? WHERE id = ?",
+          [normalizedAmount, userId]
+        );
+
+        await run(
+          `
+            INSERT INTO transactions (
+              user_id, type, amount, status, tx_hash, from_address, address, created_at, updated_at, completed_at
+            ) VALUES (?, 'deposit', ?, 'completed', ?, ?, ?, ?, ?, ?)
+          `,
+          [
+            userId,
+            normalizedAmount,
+            txHash,
+            sourceLabel,
+            reason,
+            now,
+            now,
+            now
+          ]
+        );
+
+        await run("COMMIT");
+      } catch (txError) {
+        await run("ROLLBACK");
+        throw txError;
+      }
+
+      try {
+        await createAuditLog({
+          userId,
+          action: "admin_manual_credit",
+          ip: getAnonymizedRequestIp(req),
+          userAgent: req.get("user-agent"),
+          details: {
+            adminId,
+            amount: normalizedAmount,
+            txHash,
+            reason
+          }
+        });
+      } catch (auditError) {
+        logger.warn("Failed to persist audit log for manual credit", {
+          userId,
+          adminId,
+          error: auditError?.message || String(auditError)
+        });
+      }
+
+      const updatedBalance = await get(
+        "SELECT COALESCE(balance, 0) AS balance FROM users_temp_power WHERE user_id = ?",
+        [userId]
+      );
+
+      res.json({
+        ok: true,
+        message: "Manual credit applied successfully.",
+        credit: {
+          userId,
+          amount: normalizedAmount,
+          txHash,
+          reason,
+          balanceAfter: Number(updatedBalance?.balance || 0)
+        }
+      });
+    } catch (error) {
+      logger.error("Admin manual credit error", { error: error?.message || String(error), stack: error?.stack });
+      res.status(500).json({ ok: false, message: "Unable to apply manual credit." });
+    }
+  }
+
   async function listMiners(_req, res) {
     try {
       const miners = await minersModel.listAllMiners();
@@ -971,6 +1101,7 @@ function createAdminController() {
     listRecentUsers,
     listAuditLogs,
     setUserBan,
+    creditUserBalanceManually,
     listMiners,
     createMiner,
     updateMiner,

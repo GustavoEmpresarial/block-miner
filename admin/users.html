@@ -72,6 +72,21 @@
           <h2>User details</h2>
           <span id="detailsStatus" class="status"></span>
         </div>
+        <div class="form-grid" style="grid-template-columns: 1fr 1fr 1fr auto; margin-bottom: .8rem;">
+          <label>
+            Manual credit amount (POL)
+            <input id="manualCreditAmount" type="number" min="0.000001" step="0.000001" placeholder="Ex: 12.5" />
+          </label>
+          <label>
+            Reason (required)
+            <input id="manualCreditReason" type="text" maxlength="240" placeholder="Missing on-chain deposit from user report" />
+          </label>
+          <label>
+            Tx Hash (optional)
+            <input id="manualCreditTxHash" type="text" maxlength="66" placeholder="0x..." />
+          </label>
+          <button class="btn primary" id="manualCreditBtn" type="button">Add Manual Credit</button>
+        </div>
         <div id="detailsGrid" class="stats-grid"></div>
       </section>
 

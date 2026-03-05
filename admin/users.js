@@ -10,6 +10,10 @@ const searchInput = document.getElementById("searchInput");
 const fromInput = document.getElementById("fromInput");
 const toInput = document.getElementById("toInput");
 const pageInfo = document.getElementById("pageInfo");
+const manualCreditAmountInput = document.getElementById("manualCreditAmount");
+const manualCreditReasonInput = document.getElementById("manualCreditReason");
+const manualCreditTxHashInput = document.getElementById("manualCreditTxHash");
+const manualCreditBtn = document.getElementById("manualCreditBtn");
 
 let currentPage = 1;
 const pageSize = 20;
@@ -179,6 +183,64 @@ async function loadUserDetails(id) {
   }
 }
 
+async function submitManualCredit() {
+  const userId = Number(userIdInput?.value || 0);
+  const amount = Number(manualCreditAmountInput?.value || 0);
+  const reason = String(manualCreditReasonInput?.value || "").trim();
+  const txHash = String(manualCreditTxHashInput?.value || "").trim();
+
+  if (!Number.isInteger(userId) || userId <= 0) {
+    setStatus(detailsStatus, "Load a valid user before applying manual credit.", "error");
+    return;
+  }
+
+  if (!Number.isFinite(amount) || amount <= 0) {
+    setStatus(detailsStatus, "Manual credit amount must be greater than zero.", "error");
+    return;
+  }
+
+  if (reason.length < 5) {
+    setStatus(detailsStatus, "Reason must contain at least 5 characters.", "error");
+    return;
+  }
+
+  if (txHash && !/^0x[a-fA-F0-9]{64}$/.test(txHash)) {
+    setStatus(detailsStatus, "txHash format is invalid.", "error");
+    return;
+  }
+
+  const confirmed = window.confirm(`Confirm manual credit of ${amount.toFixed(6)} POL to user #${userId}?`);
+  if (!confirmed) {
+    return;
+  }
+
+  setStatus(detailsStatus, "Applying manual credit...", "info");
+
+  try {
+    const payload = {
+      userId,
+      amount,
+      reason,
+      ...(txHash ? { txHash } : {})
+    };
+
+    const data = await request("/api/admin/wallet/manual-credit", {
+      method: "POST",
+      body: JSON.stringify(payload)
+    });
+
+    if (manualCreditAmountInput) manualCreditAmountInput.value = "";
+    if (manualCreditReasonInput) manualCreditReasonInput.value = "";
+    if (manualCreditTxHashInput) manualCreditTxHashInput.value = "";
+
+    await loadUserDetails(userId);
+    await loadUsers();
+    setStatus(detailsStatus, data?.message || "Manual credit applied.", "success");
+  } catch (error) {
+    setStatus(detailsStatus, error.message || "Failed to apply manual credit.", "error");
+  }
+}
+
 document.getElementById("loadDetailsBtn")?.addEventListener("click", () => {
   const id = Number(userIdInput?.value || 0);
   if (!Number.isInteger(id) || id <= 0) {
@@ -210,5 +272,7 @@ document.getElementById("refreshBtn")?.addEventListener("click", () => {
   loadUsers();
   setStatus(pageStatus, "Refreshed.", "success");
 });
+
+manualCreditBtn?.addEventListener("click", submitManualCredit);
 
 loadUsers();

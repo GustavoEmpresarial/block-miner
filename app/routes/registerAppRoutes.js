@@ -181,6 +181,14 @@ function registerAppRoutes({
       filename: z.string().trim().min(1).max(255).regex(/^[A-Za-z0-9._-]+$/)
     })
     .strict();
+  const adminManualCreditSchema = z
+    .object({
+      userId: z.coerce.number().int().positive(),
+      amount: z.coerce.number().positive().max(1_000_000),
+      reason: z.string().trim().min(5).max(240),
+      txHash: z.string().trim().regex(/^0x[a-fA-F0-9]{64}$/).optional().or(z.literal(""))
+    })
+    .strict();
 
   app.get("/api/health", healthController.health);
   app.get("/api/shop/miners", requireAuth, shopListLimiter, shopController.listMiners);
@@ -532,6 +540,13 @@ function registerAppRoutes({
   app.post("/api/admin/miners/fix-image-duplicates", requireAdminAuth, adminLimiter, adminController.fixMinerImageDuplicates);
 
   app.get("/api/admin/withdrawals/pending", requireAdminAuth, adminLimiter, adminController.listPendingWithdrawals);
+  app.post(
+    "/api/admin/wallet/manual-credit",
+    requireAdminAuth,
+    adminLimiter,
+    validateBody(adminManualCreditSchema),
+    adminController.creditUserBalanceManually
+  );
   app.post("/api/admin/withdrawals/:withdrawalId/approve", requireAdminAuth, adminLimiter, adminController.approveWithdrawal);
   app.post("/api/admin/withdrawals/:withdrawalId/reject", requireAdminAuth, adminLimiter, adminController.rejectWithdrawal);
   app.post("/api/admin/withdrawals/:withdrawalId/complete", requireAdminAuth, adminLimiter, adminController.completeWithdrawalManually);
