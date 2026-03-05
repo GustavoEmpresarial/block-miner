@@ -11,6 +11,7 @@
 
   const socket = typeof io === "function" ? io() : null;
   let currentUserId = null;
+  let forceScrollOnNextRender = true;
 
   const QUICK_EMOJIS = ["😀", "😂", "🤣", "😍", "😎", "🤝", "🔥", "🚀", "💎", "⛏️", "🎉", "✅", "💬", "👏"];
 
@@ -97,7 +98,16 @@
     });
   }
 
+  function isNearBottom(thresholdPx = 48) {
+    const distance = messagesEl.scrollHeight - (messagesEl.scrollTop + messagesEl.clientHeight);
+    return distance <= thresholdPx;
+  }
+
   function renderMessages(messages) {
+    const previousScrollTop = messagesEl.scrollTop;
+    const previousScrollHeight = messagesEl.scrollHeight;
+    const shouldStickToBottom = forceScrollOnNextRender || previousScrollHeight === 0 || isNearBottom();
+
     messagesEl.innerHTML = "";
     for (const msg of messages || []) {
       const item = document.createElement("div");
@@ -115,7 +125,14 @@
       messagesEl.appendChild(item);
     }
 
-    messagesEl.scrollTop = messagesEl.scrollHeight;
+    if (shouldStickToBottom) {
+      messagesEl.scrollTop = messagesEl.scrollHeight;
+    } else {
+      const heightDelta = messagesEl.scrollHeight - previousScrollHeight;
+      messagesEl.scrollTop = Math.max(0, previousScrollTop + heightDelta);
+    }
+
+    forceScrollOnNextRender = false;
   }
 
   async function loadMessages() {
@@ -155,6 +172,7 @@
     }
 
     inputEl.value = "";
+    forceScrollOnNextRender = true;
     try {
       await sendMessage(message);
     } catch {

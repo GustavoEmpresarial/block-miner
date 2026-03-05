@@ -52,6 +52,7 @@ const state = {
 };
 
 const MIN_WITHDRAWAL_POL = 10;
+const MIN_DEPOSIT_POL = 0.1;
 const WITHDRAWAL_PROCESSING_NOTE = "Processing time: up to 10 business days.";
 
 let balanceAutoRefreshTimer = null;
@@ -201,7 +202,7 @@ async function loadDepositAddress() {
       if (elements.depositAddressInput) {
         elements.depositAddressInput.value = "Unavailable";
       }
-      window.notify?.(data.message || "Erro ao carregar endereço de depósito", "error");
+      window.notify?.(data.message || "Failed to load deposit address", "error");
     }
   } catch (error) {
     console.error("Error loading deposit address:", error);
@@ -209,7 +210,7 @@ async function loadDepositAddress() {
     if (elements.depositAddressInput) {
       elements.depositAddressInput.value = "Unavailable";
     }
-    window.notify?.("Erro ao carregar endereço de depósito", "error");
+    window.notify?.("Failed to load deposit address", "error");
   }
 }
 
@@ -289,10 +290,10 @@ async function verifyDepositTxWithRetry(txHash, maxAttempts = 18, delayMs = 5000
       continue;
     }
 
-    throw new Error(data?.message || "Falha ao verificar depósito");
+    throw new Error(data?.message || "Failed to verify deposit");
   }
 
-  return { ok: true, status: "pending", message: "Transação enviada. Aguarde a confirmação da rede." };
+  return { ok: true, status: "pending", message: "Transaction sent. Please wait for blockchain confirmation." };
 }
 
 async function registerDepositTx(txHash) {
@@ -314,7 +315,7 @@ async function registerDepositTx(txHash) {
   }
 
   if (!response.ok && !data?.ok) {
-    throw new Error(data?.message || "Falha ao registrar depósito");
+    throw new Error(data?.message || "Failed to register deposit");
   }
 
   return data;
@@ -367,18 +368,18 @@ async function handleExtensionDeposit(event) {
   event.preventDefault();
 
   if (typeof window.ethereum === "undefined") {
-    window.notify?.("Nenhuma extensão de carteira detectada no navegador.", "error");
+    window.notify?.("No wallet browser extension was detected.", "error");
     return;
   }
 
   if (!state.walletAddress) {
-    window.notify?.("Conecte sua carteira antes de depositar.", "error");
+    window.notify?.("Connect your wallet before depositing.", "error");
     return;
   }
 
   const { amount, normalized } = parseDepositAmount(elements.depositExtensionAmount?.value || "");
-  if (!amount || amount < 0.01) {
-    window.notify?.("Informe um valor válido (mínimo 0.01 POL).", "error");
+  if (!amount || amount < MIN_DEPOSIT_POL) {
+    window.notify?.(`Enter a valid amount (minimum ${MIN_DEPOSIT_POL} POL).`, "error");
     return;
   }
 
@@ -387,16 +388,16 @@ async function handleExtensionDeposit(event) {
   }
 
   if (!state.depositAddress) {
-    window.notify?.("Não foi possível obter o endereço interno de depósito.", "error");
+    window.notify?.("Could not load the internal deposit address.", "error");
     return;
   }
 
-  const originalText = elements.depositExtensionBtn?.innerHTML || "Depositar com Extensão";
+  const originalText = elements.depositExtensionBtn?.innerHTML || "Deposit with Wallet Extension";
 
   try {
     if (elements.depositExtensionBtn) {
       elements.depositExtensionBtn.disabled = true;
-      elements.depositExtensionBtn.innerHTML = '<i class="bi bi-hourglass-split"></i> Confirmando...';
+      elements.depositExtensionBtn.innerHTML = '<i class="bi bi-hourglass-split"></i> Confirming...';
     }
 
     const txHash = await window.ethereum.request({
@@ -415,19 +416,19 @@ async function handleExtensionDeposit(event) {
 
     window.notify?.(
       registerResult?.status === "pending"
-        ? "Transação registrada. O crédito será aplicado automaticamente após confirmação, mesmo se você sair da wallet."
-        : (registerResult?.message || "Transação enviada. Aguardando confirmação na rede..."),
+        ? "Transaction registered. Credit will be applied automatically after confirmation, even if you leave the wallet page."
+        : (registerResult?.message || "Transaction sent. Waiting for network confirmation..."),
       "info"
     );
 
     if (elements.depositExtensionBtn) {
-      elements.depositExtensionBtn.innerHTML = '<i class="bi bi-arrow-repeat"></i> Validando...';
+      elements.depositExtensionBtn.innerHTML = '<i class="bi bi-arrow-repeat"></i> Validating...';
     }
 
     const verification = await verifyDepositTxWithRetry(txHash, 6, 5000);
 
     if (verification?.ok && verification?.status !== "pending") {
-      window.notify?.(verification.message || "Depósito confirmado e saldo atualizado.", "success");
+      window.notify?.(verification.message || "Deposit confirmed and balance updated.", "success");
       if (elements.depositExtensionAmount) {
         elements.depositExtensionAmount.value = "";
       }
@@ -437,14 +438,14 @@ async function handleExtensionDeposit(event) {
       return;
     }
 
-    window.notify?.(verification?.message || "Transação registrada. O crédito será automático após confirmação.", "info");
+    window.notify?.(verification?.message || "Transaction registered. Credit will be automatic after confirmation.", "info");
     await loadPendingDeposits();
   } catch (error) {
     console.error("Error processing extension deposit:", error);
     if (error?.code === 4001) {
-      window.notify?.("Transação cancelada na carteira.", "info");
+      window.notify?.("Transaction was cancelled in the wallet.", "info");
     } else {
-      window.notify?.(String(error?.message || "Falha ao processar depósito."), "error");
+      window.notify?.(String(error?.message || "Failed to process deposit."), "error");
     }
   } finally {
     if (elements.depositExtensionBtn) {
@@ -461,19 +462,19 @@ async function handleVerifyDeposit(event) {
   const txHash = elements.verifyTxHash.value.trim();
   
   if (!txHash) {
-    window.notify?.("Por favor, insira o hash da transação", "error");
+    window.notify?.("Please enter the transaction hash", "error");
     return;
   }
 
   if (!/^0x[a-fA-F0-9]{64}$/.test(txHash)) {
-    window.notify?.("Hash de transação inválido", "error");
+    window.notify?.("Invalid transaction hash", "error");
     return;
   }
 
   try {
     // Disable button
     elements.verifyDepositBtn.disabled = true;
-    elements.verifyDepositBtn.innerHTML = '<i class="bi bi-hourglass-split"></i> Verificando...';
+    elements.verifyDepositBtn.innerHTML = '<i class="bi bi-hourglass-split"></i> Verifying...';
 
     const response = await fetch("/api/wallet/verify-deposit", {
       method: "POST",
@@ -489,7 +490,7 @@ async function handleVerifyDeposit(event) {
     if (data.ok) {
       const isPending = data.status === "pending";
       window.notify?.(
-        data.message || (isPending ? "Depósito registrado e aguardando confirmação." : "Depósito confirmado."),
+        data.message || (isPending ? "Deposit registered and awaiting confirmation." : "Deposit confirmed."),
         isPending ? "info" : "success"
       );
       elements.verifyTxHash.value = "";
@@ -501,16 +502,16 @@ async function handleVerifyDeposit(event) {
       // Refresh transaction history
       await loadTransactionHistory();
     } else {
-      window.notify?.(data.message || "Erro ao processar depósito", "error");
+      window.notify?.(data.message || "Error processing deposit", "error");
     }
 
   } catch (error) {
     console.error("Error reporting deposit:", error);
-    window.notify?.("Erro de conexão. Tente novamente.", "error");
+    window.notify?.("Connection error. Please try again.", "error");
   } finally {
     // Re-enable button
     elements.verifyDepositBtn.disabled = false;
-    elements.verifyDepositBtn.innerHTML = '<i class="bi bi-search"></i> Verificar e Creditar Depósito';
+    elements.verifyDepositBtn.innerHTML = '<i class="bi bi-search"></i> Verify and Credit Deposit';
   }
 }
 

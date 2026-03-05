@@ -46,12 +46,15 @@ body.with-layout.chat-theme main {
   grid-template-rows: 1fr auto;
   gap: 0.8rem;
   min-height: 0;
+  height: clamp(520px, 72vh, 760px);
 }
 
 .chat-messages {
   min-height: 0;
   height: 100%;
   overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
   display: flex;
   flex-direction: column;
   align-items: stretch;
@@ -61,6 +64,12 @@ body.with-layout.chat-theme main {
   border-radius: 10px;
   border: 1px solid rgba(109, 131, 179, 0.35);
   background: rgba(9, 15, 30, 0.7);
+}
+
+@media (max-width: 900px) {
+  .chat-wrapper {
+    height: clamp(440px, 68vh, 700px);
+  }
 }
 
 .chat-item {

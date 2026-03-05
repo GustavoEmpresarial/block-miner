@@ -27,6 +27,7 @@ const WITHDRAWAL_PRIVATE_KEY = process.env.WITHDRAWAL_PRIVATE_KEY;
 const WITHDRAWAL_MNEMONIC = process.env.WITHDRAWAL_MNEMONIC;
 const CHECKIN_RECEIVER = process.env.CHECKIN_RECEIVER || "0x95EA8E99063A3EF1B95302aA1C5bE199653EEb13";
 const DEPOSIT_CONTRACT_ADDRESS = String(process.env.DEPOSIT_CONTRACT_ADDRESS || CHECKIN_RECEIVER).trim();
+const MIN_DEPOSIT_POL = Number(process.env.DEPOSIT_MIN_POL || 0.1);
 
 const MIN_WITHDRAWAL = Number(config.withdraw?.min || 10);
 const MAX_WITHDRAWAL = Number(config.withdraw?.max || 1_000_000);
@@ -778,7 +779,8 @@ async function getDepositAddress(req, res) {
       network: "Polygon",
       chainId: POLYGON_CHAIN_ID,
       symbol: "POL",
-      instructions: "Send POL from your connected wallet to this smart-contract deposit address. Credit is processed automatically after blockchain confirmation, even if you close the wallet page.",
+      minDepositPol: MIN_DEPOSIT_POL,
+      instructions: `Send POL from your connected wallet to this smart-contract deposit address. Minimum deposit is ${MIN_DEPOSIT_POL} POL. Credit is processed automatically after blockchain confirmation, even if you close the wallet page.`,
       isSmartContract: true
     });
   } catch (error) {
@@ -903,6 +905,18 @@ async function verifyAndCreditDeposit(req, res) {
       return res.status(400).json({
         ok: false,
         message: "Invalid transaction amount"
+      });
+    }
+
+    if (actualAmount < MIN_DEPOSIT_POL) {
+      const depositToInvalidate = existingDeposit || await walletModel.getDepositByTxHash(normalizedTxHash);
+      if (depositToInvalidate?.id) {
+        await walletModel.updateDepositStatus(depositToInvalidate.id, "invalid", actualAmount);
+      }
+
+      return res.status(400).json({
+        ok: false,
+        message: `Minimum deposit is ${MIN_DEPOSIT_POL} POL`
       });
     }
 

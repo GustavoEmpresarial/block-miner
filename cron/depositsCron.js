@@ -22,6 +22,7 @@ const DEFAULT_RPC_URLS = [
 const RPC_URLS = Array.from(new Set([POLYGON_RPC_URL, ...DEFAULT_RPC_URLS]));
 const CHECKIN_RECEIVER = process.env.CHECKIN_RECEIVER || "0x95EA8E99063A3EF1B95302aA1C5bE199653EEb13";
 const DEPOSIT_CONTRACT_ADDRESS = String(process.env.DEPOSIT_CONTRACT_ADDRESS || CHECKIN_RECEIVER).trim();
+const MIN_DEPOSIT_POL = Number(process.env.DEPOSIT_MIN_POL || 0.1);
 const WITHDRAWAL_PRIVATE_KEY = process.env.WITHDRAWAL_PRIVATE_KEY;
 const WITHDRAWAL_MNEMONIC = process.env.WITHDRAWAL_MNEMONIC;
 
@@ -317,6 +318,11 @@ async function checkPendingDeposits() {
             if (!actualAmount || actualAmount <= 0) {
               await walletModel.updateDepositStatus(safeDeposit.id, "invalid");
               return { status: "invalid", reason: "invalid_amount" };
+            }
+
+            if (actualAmount < MIN_DEPOSIT_POL) {
+              await walletModel.updateDepositStatus(safeDeposit.id, "invalid", actualAmount);
+              return { status: "invalid", reason: "below_minimum_deposit", minimumPol: MIN_DEPOSIT_POL };
             }
 
             const finalization = await walletModel.finalizeDepositByTxHash(safeDeposit.tx_hash, actualAmount);
