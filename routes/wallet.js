@@ -9,6 +9,7 @@ const { z } = require("zod");
 // Rate limiters for wallet routes
 const walletGetLimiter = createRateLimiter({ windowMs: 60_000, max: 30 }); // 30 requests per minute
 const walletPostLimiter = createRateLimiter({ windowMs: 60_000, max: 10 }); // 10 requests per minute
+const walletVerifyDepositLimiter = createRateLimiter({ windowMs: 60_000, max: 30 }); // 30 verify attempts per minute
 const withdrawalLimiter = createRateLimiter({ windowMs: 300_000, max: 5 }); // 5 withdrawals per 5 minutes
 
 const walletAddressSchema = z
@@ -52,7 +53,7 @@ router.post("/withdraw", requireAuth, withdrawalLimiter, validateBody(withdrawal
 router.get("/deposit-address", requireAuth, walletGetLimiter, walletController.getDepositAddress);
 
 // Verify and credit POL deposit by transaction hash
-router.post("/verify-deposit", requireAuth, walletPostLimiter, validateBody(depositReportSchema), walletController.verifyAndCreditDeposit);
+router.post("/verify-deposit", requireAuth, walletVerifyDepositLimiter, validateBody(depositReportSchema), walletController.verifyAndCreditDeposit);
 
 // Get pending deposits
 router.get("/pending-deposits", requireAuth, walletGetLimiter, walletController.getPendingDeposits);

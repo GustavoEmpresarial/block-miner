@@ -275,6 +275,15 @@ async function verifyDepositTxWithRetry(txHash, maxAttempts = 18, delayMs = 5000
       continue;
     }
 
+    if (response.status === 429) {
+      const retryAfterHeader = Number(response.headers.get("Retry-After") || 0);
+      const retryAfterMs = Number.isFinite(retryAfterHeader) && retryAfterHeader > 0
+        ? retryAfterHeader * 1000
+        : delayMs;
+      await new Promise((resolve) => setTimeout(resolve, retryAfterMs));
+      continue;
+    }
+
     if (response.status === 400 && /not found|invalid/i.test(String(data?.message || ""))) {
       await new Promise((resolve) => setTimeout(resolve, delayMs));
       continue;

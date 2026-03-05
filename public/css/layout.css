@@ -197,6 +197,9 @@ body:has(#layoutInclude) main {
   border-bottom: 1px solid rgba(0, 0, 0, 0.15);
   z-index: 1090;
   text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .sidebar-overlay {
@@ -363,7 +366,14 @@ body:has(#layoutInclude) main {
 }
 
 @media (max-width: 900px) {
-  body.with-layout main {
+  main.app {
+    margin-left: 0 !important;
+    width: 100% !important;
+    max-width: 100% !important;
+  }
+
+  body.with-layout main,
+  body:has(#layoutInclude) main {
     margin-left: 0;
     width: 100%;
     padding: 0.9rem 0.9rem 1.4rem;
@@ -431,7 +441,8 @@ body:has(#layoutInclude) main {
 }
 
 @media (max-width: 640px) {
-  body.with-layout main {
+  body.with-layout main,
+  body:has(#layoutInclude) main {
     padding: 0.8rem 0.7rem 1.2rem;
   }
 
