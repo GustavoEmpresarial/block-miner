@@ -34,6 +34,7 @@ const MAX_FAILED_ATTEMPTS_EMAIL = parseIntOr(process.env.MAX_FAILED_ATTEMPTS_EMA
 const MAX_FAILED_ATTEMPTS_IP = parseIntOr(process.env.MAX_FAILED_ATTEMPTS_IP, 15);
 const LOCKOUT_DURATION_MS = parseIntOr(process.env.LOCKOUT_DURATION_MS, 15 * 60 * 1000); // 15 minutes
 const ATTEMPT_TTL_MS = parseIntOr(process.env.LOGIN_ATTEMPT_TTL_MS, 60 * 60 * 1000); // 1 hour
+const REFRESH_REUSE_GRACE_MS = parseIntOr(process.env.REFRESH_REUSE_GRACE_MS, 15_000);
 
 const CLEANUP_SAMPLE_RATE = Math.min(1, Math.max(0, Number(process.env.LOGIN_ATTEMPT_CLEANUP_RATE || 0.03)));
 
@@ -550,31 +551,54 @@ authRouter.post("/refresh", refreshLimiter, async (req, res) => {
       return;
     }
 
-    if (existing.revoked_at) {
-      if (existing.user_id) {
-        await revokeRefreshTokensForUser(existing.user_id);
+    let tokenRecord = existing;
+    let acceptedViaGraceWindow = false;
+
+    if (tokenRecord.revoked_at) {
+      const revokedAgoMs = Date.now() - Number(tokenRecord.revoked_at || 0);
+      const canGraceRecover = Boolean(tokenRecord.replaced_by) && revokedAgoMs >= 0 && revokedAgoMs <= REFRESH_REUSE_GRACE_MS;
+
+      if (canGraceRecover) {
+        const replacement = await getRefreshTokenById(tokenRecord.replaced_by);
+        const replacementValid = Boolean(
+          replacement
+            && !replacement.revoked_at
+            && Number(replacement.expires_at || 0) > Date.now()
+            && Number(replacement.user_id) === Number(tokenRecord.user_id)
+        );
+
+        if (replacementValid) {
+          tokenRecord = replacement;
+          acceptedViaGraceWindow = true;
+        }
       }
-      await auditAuthEvent(req, {
-        userId: existing.user_id || null,
-        action: "refresh_reuse_detected",
-        details: { tokenId: parsed.tokenId }
-      });
+
+      if (!acceptedViaGraceWindow) {
+        if (tokenRecord.user_id) {
+          await revokeRefreshTokensForUser(tokenRecord.user_id);
+        }
+        await auditAuthEvent(req, {
+          userId: tokenRecord.user_id || null,
+          action: "refresh_reuse_detected",
+          details: { tokenId: parsed.tokenId }
+        });
+        res.status(401).json({ ok: false, message: "Refresh token invalid." });
+        return;
+      }
+    }
+
+    if (!acceptedViaGraceWindow && tokenRecord.token_hash !== parsed.tokenHash) {
+      if (tokenRecord.user_id) {
+        await revokeRefreshTokensForUser(tokenRecord.user_id);
+      }
+      await auditAuthEvent(req, { userId: tokenRecord.user_id || null, action: "refresh_failed", details: { reason: "hash_mismatch" } });
       res.status(401).json({ ok: false, message: "Refresh token invalid." });
       return;
     }
 
-    if (existing.token_hash !== parsed.tokenHash) {
-      if (existing.user_id) {
-        await revokeRefreshTokensForUser(existing.user_id);
-      }
-      await auditAuthEvent(req, { userId: existing.user_id || null, action: "refresh_failed", details: { reason: "hash_mismatch" } });
-      res.status(401).json({ ok: false, message: "Refresh token invalid." });
-      return;
-    }
-
-    const user = await get("SELECT id, name, email, is_banned FROM users WHERE id = ?", [existing.user_id]);
+    const user = await get("SELECT id, name, email, is_banned FROM users WHERE id = ?", [tokenRecord.user_id]);
     if (!user) {
-      await auditAuthEvent(req, { userId: existing.user_id || null, action: "refresh_failed", details: { reason: "user_missing" } });
+      await auditAuthEvent(req, { userId: tokenRecord.user_id || null, action: "refresh_failed", details: { reason: "user_missing" } });
       res.status(401).json({ ok: false, message: "Refresh token invalid." });
       return;
     }
@@ -588,7 +612,7 @@ authRouter.post("/refresh", refreshLimiter, async (req, res) => {
     const accessToken = signAccessToken({ id: user.id, name: user.name, email: user.email });
     const refreshToken = createRefreshToken();
 
-    await revokeRefreshToken({ tokenId: parsed.tokenId, revokedAt: Date.now(), replacedBy: refreshToken.tokenId });
+    await revokeRefreshToken({ tokenId: tokenRecord.token_id, revokedAt: Date.now(), replacedBy: refreshToken.tokenId });
     await createRefreshTokenRecord({
       userId: user.id,
       tokenId: refreshToken.tokenId,
@@ -602,7 +626,11 @@ authRouter.post("/refresh", refreshLimiter, async (req, res) => {
       buildRefreshCookie(refreshToken.token, refreshToken.expiresAt)
     ]);
 
-    await auditAuthEvent(req, { userId: user.id, action: "refresh", details: {} });
+    await auditAuthEvent(req, {
+      userId: user.id,
+      action: "refresh",
+      details: acceptedViaGraceWindow ? { recoveredFromRace: true } : {}
+    });
 
     res.json({ ok: true, token: accessToken });
   } catch (error) {
