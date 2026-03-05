@@ -7,6 +7,8 @@ const config = require('../src/config');
 
 const POLYGON_RPC_URL = process.env.POLYGON_RPC_URL || "https://poly.api.pocket.network";
 const POLYGON_RPC_TIMEOUT_MS = Number(process.env.POLYGON_RPC_TIMEOUT_MS || 4500);
+const POLYGON_SCAN_RPC_TIMEOUT_MS = Number(process.env.POLYGON_SCAN_RPC_TIMEOUT_MS || 12000);
+const DEPOSITS_SCAN_LOOKBACK_BLOCKS = Number(process.env.DEPOSITS_SCAN_LOOKBACK_BLOCKS || 180);
 const DEFAULT_RPC_URLS = [
   "https://polygon-bor-rpc.publicnode.com",
   "https://polygon.drpc.org",
@@ -68,8 +70,28 @@ const runCronAction = createCronActionRunner({ logger, cronName: "DepositsCron" 
 
 function createProvider(url) {
   const request = new ethers.FetchRequest(url);
-  request.timeout = POLYGON_RPC_TIMEOUT_MS;
+  request.timeout = Math.max(POLYGON_RPC_TIMEOUT_MS, POLYGON_SCAN_RPC_TIMEOUT_MS);
   return new ethers.JsonRpcProvider(request);
+}
+
+async function getBlockWithRetry(provider, blockNum) {
+  let lastError = null;
+
+  for (let attempt = 1; attempt <= 2; attempt += 1) {
+    try {
+      return await provider.getBlock(blockNum, true);
+    } catch (error) {
+      lastError = error;
+      const message = String(error?.message || "").toLowerCase();
+      const isTimeout = message.includes("timeout") || message.includes("time-out") || message.includes("request timeout");
+      if (!isTimeout || attempt === 2) {
+        break;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 250));
+    }
+  }
+
+  throw lastError || new Error("Unable to load block");
 }
 
 async function getProvider() {
@@ -110,9 +132,10 @@ async function scanForNewDeposits() {
     prepare: async () => {
       const provider = await getProvider();
       const currentBlock = await provider.getBlockNumber();
-      
-      // Verificar últimos 1000 blocos para novos depósitos (aproximadamente 33 minutos)
-      const fromBlock = Math.max(currentBlock - 1000, 0);
+
+      // Scan a bounded recent window to avoid provider timeouts on heavy chains.
+      const lookbackBlocks = Math.max(10, Math.min(2000, DEPOSITS_SCAN_LOOKBACK_BLOCKS));
+      const fromBlock = Math.max(currentBlock - lookbackBlocks, 0);
       
       return { provider, currentBlock, fromBlock };
     },
@@ -135,7 +158,7 @@ async function scanForNewDeposits() {
       // Escanear blocos recentes procurando por transações para nossos endereços
       for (let blockNum = fromBlock; blockNum <= currentBlock; blockNum++) {
         try {
-          const block = await provider.getBlock(blockNum, true);
+          const block = await getBlockWithRetry(provider, blockNum);
           
           if (block && block.transactions) {
             for (const tx of block.transactions) {
@@ -180,7 +203,14 @@ async function scanForNewDeposits() {
             }
           }
         } catch (error) {
-          logger.warn("Error scanning block for deposits", { blockNum, error: error.message });
+          const message = String(error?.message || "");
+          const lowered = message.toLowerCase();
+          const isTimeout = lowered.includes("timeout") || lowered.includes("time-out") || lowered.includes("request timeout");
+          if (isTimeout) {
+            logger.debug("RPC timeout scanning block for deposits", { blockNum, error: message });
+          } else {
+            logger.warn("Error scanning block for deposits", { blockNum, error: message });
+          }
         }
       }
       
