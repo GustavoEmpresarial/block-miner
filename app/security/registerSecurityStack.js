@@ -78,7 +78,7 @@ function registerSecurityStack({
   const globalLimiter = createRateLimiter({
     windowMs: env.HTTP_GLOBAL_RATE_WINDOW_MS,
     max: env.HTTP_GLOBAL_RATE_MAX,
-    keyGenerator: (req) => `${req.ip}:global`,
+    keyGenerator: (req) => `${req.ip}:global:${req.method}:${req.path || "/"}`,
     skip: (req) => {
       if (req.method === "OPTIONS") return true;
 
@@ -93,8 +93,16 @@ function registerSecurityStack({
   const apiLimiter = createRateLimiter({
     windowMs: env.HTTP_API_RATE_WINDOW_MS,
     max: env.HTTP_API_RATE_MAX,
-    keyGenerator: (req) => `${req.ip}:api`,
-    skip: (req) => req.method === "OPTIONS"
+    keyGenerator: (req) => `${req.ip}:api:${req.method}:${req.path || "/"}`,
+    skip: (req) => {
+      if (req.method === "OPTIONS") return true;
+
+      // Auth endpoints already have dedicated route-level limiters.
+      const apiPath = req.path || "";
+      if (apiPath.startsWith("/auth/")) return true;
+
+      return false;
+    }
   });
 
   app.use(globalLimiter);
